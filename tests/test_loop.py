@@ -195,3 +195,59 @@ async def test_run_returns_duration(mock_model, registry_with_add):
     result = await loop.run("quick task")
 
     assert result.total_duration_ms > 0
+
+
+async def test_token_limit_terminates(mock_model, registry_with_add):
+    """Loop terminates when token limit is hit."""
+    mock_model.invoke = AsyncMock(
+        return_value=_tool_response("call_n", "add", {"a": 1, "b": 1}, input_tokens=600_000, output_tokens=400_000)
+    )
+
+    config = LoopConfig(max_total_tokens=2_000_000)
+    loop = AgentLoop(model=mock_model, tools=registry_with_add, config=config)
+    result = await loop.run("token heavy task")
+
+    assert result.status == RunStatus.FAILED
+    assert result.total_usage.input_tokens + result.total_usage.output_tokens >= 2_000_000
+
+
+async def test_multiple_tool_calls_in_single_message(mock_model):
+    """Model returns two tool calls in one message — both are executed."""
+    registry = ToolRegistry()
+
+    def add(a: int, b: int) -> int:
+        return a + b
+
+    def multiply(a: int, b: int) -> int:
+        return a * b
+
+    registry.register("add", add, description="Add")
+    registry.register("multiply", multiply, description="Multiply")
+
+    multi_tool_response = ModelResponse(
+        message=Message(
+            role="assistant",
+            content="",
+            tool_calls=[
+                ToolCall(id="call_1", name="add", arguments={"a": 3, "b": 5}),
+                ToolCall(id="call_2", name="multiply", arguments={"a": 2, "b": 4}),
+            ],
+        ),
+        usage=TokenUsage(input_tokens=50, output_tokens=30),
+        stop_reason="tool_use",
+    )
+
+    mock_model.invoke = AsyncMock(
+        side_effect=[
+            multi_tool_response,
+            _text_response("3+5=8 and 2*4=8"),
+        ]
+    )
+
+    loop = AgentLoop(model=mock_model, tools=registry)
+    result = await loop.run("Add 3+5 and multiply 2*4")
+
+    assert result.status == RunStatus.COMPLETED
+    assert result.total_tool_calls == 2
+    tool_messages = [m for m in result.messages if m.role == "tool"]
+    assert len(tool_messages) == 2
