@@ -4,8 +4,9 @@ from __future__ import annotations
 
 from typing import Any, AsyncIterator, Callable
 
+from mori.control.bounds import ControlBounds, ControlConfig
 from mori.model.anthropic import AnthropicAdapter
-from mori.runtime.loop import AgentLoop, LoopConfig
+from mori.runtime.loop import AgentLoop
 from mori.runtime.result import RunResult
 from mori.tools.registry import ToolRegistry
 from mori.types import ThreadId
@@ -67,12 +68,13 @@ class MoriBuilder:
         for tool_name, fn, desc, schema in self._tools:
             registry.register(tool_name, fn, description=desc, input_schema=schema)
 
-        loop_config = LoopConfig(**self._loop_config) if self._loop_config else LoopConfig()
+        control_config = ControlConfig(**self._loop_config) if self._loop_config else ControlConfig()
+        control = ControlBounds(config=control_config)
 
         loop = AgentLoop(
             model=self._model_adapter,
             tools=registry,
-            config=loop_config,
+            control=control,
         )
 
         return Mori(loop=loop, tools=registry)

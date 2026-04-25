@@ -5,8 +5,9 @@ from unittest.mock import AsyncMock
 
 import pytest
 
+from mori.control.bounds import ControlBounds, ControlConfig
 from mori.model.base import ModelAdapter
-from mori.runtime.loop import AgentLoop, LoopConfig
+from mori.runtime.loop import AgentLoop
 from mori.tools.registry import ToolRegistry
 from mori.types import (
     Message,
@@ -118,8 +119,8 @@ async def test_step_limit(mock_model, registry_with_add):
         return_value=_tool_response("call_n", "add", {"a": 1, "b": 1})
     )
 
-    config = LoopConfig(max_steps=3)
-    loop = AgentLoop(model=mock_model, tools=registry_with_add, config=config)
+    control = ControlBounds(config=ControlConfig(max_steps=3))
+    loop = AgentLoop(model=mock_model, tools=registry_with_add, control=control)
     result = await loop.run("infinite loop task")
 
     assert result.status == RunStatus.FAILED
@@ -203,8 +204,8 @@ async def test_token_limit_terminates(mock_model, registry_with_add):
         return_value=_tool_response("call_n", "add", {"a": 1, "b": 1}, input_tokens=600_000, output_tokens=400_000)
     )
 
-    config = LoopConfig(max_total_tokens=2_000_000)
-    loop = AgentLoop(model=mock_model, tools=registry_with_add, config=config)
+    control = ControlBounds(config=ControlConfig(max_total_tokens=2_000_000))
+    loop = AgentLoop(model=mock_model, tools=registry_with_add, control=control)
     result = await loop.run("token heavy task")
 
     assert result.status == RunStatus.FAILED

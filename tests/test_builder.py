@@ -92,7 +92,7 @@ def test_builder_config():
             .config(max_steps=10)
             .build()
         )
-        assert agent._loop._config.max_steps == 10
+        assert agent._loop._control._config.max_steps == 10
 
 
 async def test_mori_run():
