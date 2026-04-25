@@ -181,6 +181,22 @@ class RegisteredTool(MoriModel):
     model_config = {"frozen": False, "extra": "forbid", "arbitrary_types_allowed": True}
 
 
+# ── Health & Auth ────────────────────────────────────────────
+
+class HealthStatus(MoriModel):
+    healthy: bool
+    component: str
+    message: str = ""
+    latency_ms: float | None = None
+
+
+class AuthConfig(MoriModel):
+    type: Literal["bearer", "api_key", "oauth2", "none"] = "none"
+    token: str | None = None
+    token_env: str | None = None
+    header_name: str = "Authorization"
+
+
 # ── Error Hierarchy ──────────────────────────────────────────
 
 class MoriError(Exception):
@@ -214,4 +230,8 @@ class ToolInvocationError(ToolError):
 
 
 class SchemaValidationError(ToolError):
+    pass
+
+
+class ServerUnavailable(ToolError):
     pass
