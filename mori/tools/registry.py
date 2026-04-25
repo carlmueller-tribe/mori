@@ -1,4 +1,4 @@
-"""Tool registry for native Python callables."""
+"""Tool registry for native Python callables, CLI tools, and MCP servers."""
 
 from __future__ import annotations
 
@@ -8,6 +8,8 @@ import time
 from datetime import datetime, timezone
 from typing import Any, Callable
 
+from mori.protocols.cli.runner import CLIRunner, CLIToolConfig
+from mori.protocols.mcp.client import MCPClient
 from mori.tools.schema import infer_schema
 from mori.types import (
     MoriModel,
@@ -45,6 +47,8 @@ class ToolRegistry:
         self._tools: dict[str, RegisteredTool] = {}
         self._metrics: dict[str, ToolMetrics] = {}
         self._max_result_tokens = max_result_tokens
+        self._cli_configs: dict[str, tuple[CLIRunner, CLIToolConfig]] = {}
+        self._mcp_clients: dict[str, MCPClient] = {}
 
     def register(
         self,
@@ -96,6 +100,63 @@ class ToolRegistry:
         rt = self._tools.get(name)
         return rt.spec if rt else None
 
+    def register_cli(
+        self,
+        name: str,
+        command: str,
+        description: str,
+        args_format: str = "flags",
+        args_schema: dict | None = None,
+        shell: bool = False,
+        cwd: str | None = None,
+        env: dict[str, str] | None = None,
+        timeout_sec: float = 60.0,
+        tags: list[str] | None = None,
+    ) -> str:
+        """Register a CLI tool backed by CLIRunner. Returns the tool ID."""
+        tool_id = ToolId(f"cli:{name}")
+        config = CLIToolConfig(
+            command=command,
+            args_format=args_format,
+            shell=shell,
+            cwd=cwd,
+            env=env,
+            timeout_sec=timeout_sec,
+        )
+        input_schema = args_schema or {"type": "object", "properties": {}}
+        spec = ToolSpec(
+            tool_id=tool_id,
+            name=name,
+            description=description,
+            input_schema=input_schema,
+            source=ToolSource.CLI,
+            tags=tags or [],
+        )
+        runner = CLIRunner()
+        self._tools[name] = RegisteredTool(spec=spec, fn=None)
+        self._cli_configs[name] = (runner, config)
+        self._metrics[tool_id] = ToolMetrics(tool_id=tool_id)
+        return tool_id
+
+    async def register_mcp_server(
+        self,
+        name: str,
+        url: str,
+        transport: str = "sse",
+        auth: Any = None,
+    ) -> list[str]:
+        """Connect to an MCP server, discover its tools, and register them."""
+        client = MCPClient(name=name, url=url, transport=transport, auth=auth)
+        await client.connect()
+        specs = await client.discover_tools()
+        self._mcp_clients[name] = client
+        tool_ids: list[str] = []
+        for spec in specs:
+            self._tools[spec.name] = RegisteredTool(spec=spec, fn=None)
+            self._metrics[spec.tool_id] = ToolMetrics(tool_id=spec.tool_id)
+            tool_ids.append(spec.tool_id)
+        return tool_ids
+
     def get_metrics(self, tool_id: str) -> ToolMetrics | None:
         """Get metrics for a tool by its full tool_id (e.g. 'native:add')."""
         return self._metrics.get(tool_id)
@@ -109,54 +170,58 @@ class ToolRegistry:
         return f"{truncated} [TRUNCATED — original length: {len(content)} chars]"
 
     async def invoke(self, name: str, arguments: dict[str, Any]) -> ToolResult:
-        """Invoke a tool by name with the given arguments."""
+        """Invoke a tool by name with the given arguments, routing by source."""
         rt = self._tools.get(name)
         if rt is None:
             raise ToolInvocationError(f"Tool '{name}' not found")
 
-        if rt.fn is None:
-            raise ToolInvocationError(f"Tool '{name}' has no callable")
-
-        tool_id = ToolId(f"native:{name}")
-        m = self._metrics.get(tool_id)
-
+        metrics = self._metrics.get(rt.spec.tool_id)
         start = time.monotonic()
+
         try:
-            if asyncio.iscoroutinefunction(rt.fn):
-                raw_result = await rt.fn(**arguments)
+            if rt.spec.source == ToolSource.CLI:
+                cli_entry = self._cli_configs.get(name)
+                if cli_entry is None:
+                    raise ToolInvocationError(f"CLI tool '{name}' has no runner config")
+                runner, config = cli_entry
+                result = await runner.run(arguments=arguments, config=config)
+                # CLIRunner sets tool_name to the command; override to the registered name
+                result = ToolResult(
+                    tool_name=name,
+                    call_id=result.call_id,
+                    success=result.success,
+                    content=result.content,
+                    error=result.error,
+                    latency_ms=result.latency_ms,
+                    metadata=result.metadata,
+                )
+            elif rt.spec.source == ToolSource.MCP:
+                server_id = rt.spec.server_id
+                if server_id is None or server_id not in self._mcp_clients:
+                    raise ToolInvocationError(f"MCP tool '{name}' has no connected server")
+                result = await self._mcp_clients[server_id].invoke(name, arguments)
+            elif rt.fn is not None:
+                if asyncio.iscoroutinefunction(rt.fn):
+                    raw_result = await rt.fn(**arguments)
+                else:
+                    raw_result = rt.fn(**arguments)
+                elapsed_ms = (time.monotonic() - start) * 1000
+                content = str(raw_result) if not isinstance(raw_result, str) else raw_result
+                result = ToolResult(
+                    tool_name=name,
+                    call_id="",
+                    success=True,
+                    content=content,
+                    latency_ms=elapsed_ms,
+                )
             else:
-                raw_result = rt.fn(**arguments)
+                raise ToolInvocationError(f"Tool '{name}' has no callable")
 
-            elapsed_ms = (time.monotonic() - start) * 1000
-            content = str(raw_result) if not isinstance(raw_result, str) else raw_result
-            content = self._truncate(content)
-
-            if m is not None:
-                m.total_calls += 1
-                m._total_latency_ms += elapsed_ms
-                m.avg_latency_ms = m._total_latency_ms / m.total_calls
-                m.last_called = datetime.now(tz=timezone.utc)
-
-            return ToolResult(
-                tool_name=name,
-                call_id="",
-                success=True,
-                content=content,
-                latency_ms=elapsed_ms,
-            )
-
+        except ToolInvocationError:
+            raise
         except Exception as exc:
             elapsed_ms = (time.monotonic() - start) * 1000
-
-            if m is not None:
-                m.total_calls += 1
-                m.total_errors += 1
-                m._total_latency_ms += elapsed_ms
-                m.avg_latency_ms = m._total_latency_ms / m.total_calls
-                m.last_called = datetime.now(tz=timezone.utc)
-                m.last_error = str(exc)
-
-            return ToolResult(
+            result = ToolResult(
                 tool_name=name,
                 call_id="",
                 success=False,
@@ -164,3 +229,27 @@ class ToolRegistry:
                 error=str(exc),
                 latency_ms=elapsed_ms,
             )
+
+        # Truncate successful results
+        if result.success and isinstance(result.content, str):
+            result = ToolResult(
+                tool_name=result.tool_name,
+                call_id=result.call_id,
+                success=result.success,
+                content=self._truncate(result.content),
+                error=result.error,
+                latency_ms=result.latency_ms,
+                metadata=result.metadata,
+            )
+
+        # Update metrics
+        if metrics:
+            metrics.total_calls += 1
+            metrics._total_latency_ms += result.latency_ms
+            metrics.avg_latency_ms = metrics._total_latency_ms / metrics.total_calls
+            metrics.last_called = datetime.now(tz=timezone.utc)
+            if not result.success:
+                metrics.total_errors += 1
+                metrics.last_error = result.error
+
+        return result
