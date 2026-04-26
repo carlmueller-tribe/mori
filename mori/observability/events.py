@@ -8,6 +8,7 @@ from typing import Any, Protocol, runtime_checkable
 from pydantic import Field
 
 from mori.types import (
+    MemoryLayer,
     MoriModel,
     Phase,
     RunId,
@@ -92,6 +93,23 @@ class BoundViolationEvent(MoriEvent):
     bound_name: str
     current_value: float
     limit_value: float
+
+
+# ── Memory Events ────────────────────────────────────────────
+
+class MemoryReadEvent(MoriEvent):
+    event_type: str = "memory.read"
+    query: str
+    layers: list[MemoryLayer]
+    records_returned: int
+    tokens_consumed: int
+    duration_ms: float
+
+class MemoryWriteEvent(MoriEvent):
+    event_type: str = "memory.write"
+    layer: MemoryLayer
+    record_ids: list[str]
+    records_written: int
 
 
 # ── Trace Context ────────────────────────────────────────────
