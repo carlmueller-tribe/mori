@@ -47,6 +47,8 @@ def _format_event(event: MoriEvent) -> str:
 
 
 class StdoutSink:
+    realtime = True  # Events are written immediately, not buffered
+
     async def write(self, event: MoriEvent) -> None:
         print(_format_event(event))
 

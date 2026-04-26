@@ -15,7 +15,7 @@ from mori.types import MoriModel, ToolResult
 
 class CLIToolConfig(MoriModel):
     command: str
-    args_format: Literal["positional", "flags", "subcommand"] = "flags"
+    args_format: Literal["positional", "flags", "subcommand", "raw"] = "flags"
     shell: bool = False
     cwd: str | None = None
     env: dict[str, str] | None = None
@@ -46,6 +46,7 @@ class CLIRunner:
                     cmd,
                     cwd=config.cwd,
                     env=env,
+                    stdin=subprocess.DEVNULL,
                     stderr=subprocess.PIPE if config.capture_stderr else None,
                     check=False,
                 )

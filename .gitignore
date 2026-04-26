@@ -14,3 +14,5 @@ venv/
 *.db
 *.jsonl
 .DS_Store
+.env
+.env.*

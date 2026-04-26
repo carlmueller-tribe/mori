@@ -60,6 +60,50 @@ def test_list_specs_includes_cli():
     assert ToolSource.CLI in sources
 
 
+def test_register_cli_bare_schema_wrapped_in_object():
+    """When args_schema is just properties (no 'type': 'object'), it gets wrapped."""
+    registry = ToolRegistry()
+    registry.register_cli(
+        name="rg",
+        command="rg",
+        description="Search",
+        args_format="flags",
+        args_schema={"pattern": {"type": "string"}, "path": {"type": "string"}},
+    )
+    spec = registry.get_spec("rg")
+    assert spec is not None
+    assert spec.input_schema["type"] == "object"
+    assert "pattern" in spec.input_schema["properties"]
+    assert "path" in spec.input_schema["properties"]
+
+
+def test_register_cli_full_schema_preserved():
+    """When args_schema already has 'type': 'object', it's used as-is."""
+    registry = ToolRegistry()
+    full_schema = {
+        "type": "object",
+        "properties": {"q": {"type": "string"}},
+        "required": ["q"],
+    }
+    registry.register_cli(
+        name="search", command="rg", description="Search",
+        args_format="flags", args_schema=full_schema,
+    )
+    spec = registry.get_spec("search")
+    assert spec is not None
+    assert spec.input_schema == full_schema
+
+
+def test_register_cli_no_schema_defaults_to_empty_object():
+    """When args_schema is None, a minimal object schema is generated."""
+    registry = ToolRegistry()
+    registry.register_cli(name="echo", command="echo", description="Echo", args_format="flags")
+    spec = registry.get_spec("echo")
+    assert spec is not None
+    assert spec.input_schema["type"] == "object"
+    assert spec.input_schema["properties"] == {}
+
+
 @pytest.mark.anyio
 async def test_register_mcp_server():
     registry = ToolRegistry()

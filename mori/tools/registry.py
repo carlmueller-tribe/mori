@@ -123,7 +123,13 @@ class ToolRegistry:
             env=env,
             timeout_sec=timeout_sec,
         )
-        input_schema = args_schema or {"type": "object", "properties": {}}
+        if args_schema is None:
+            input_schema = {"type": "object", "properties": {}}
+        elif args_schema.get("type") == "object":
+            input_schema = args_schema
+        else:
+            # Treat bare dict as properties — wrap in object schema
+            input_schema = {"type": "object", "properties": args_schema}
         spec = ToolSpec(
             tool_id=tool_id,
             name=name,

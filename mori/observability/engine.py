@@ -31,8 +31,16 @@ class ObservabilityEngine:
         if self._config.enabled_event_types is not None:
             if event.event_type not in self._config.enabled_event_types:
                 return
-        self._buffer.append(event)
+
         self._all_events.append(event)
+
+        # Write-through for realtime sinks (e.g. StdoutSink)
+        for sink in self._sinks:
+            if getattr(sink, "realtime", False) is True:
+                await sink.write(event)
+
+        # Buffer for non-realtime sinks (e.g. JsonlSink)
+        self._buffer.append(event)
         if len(self._buffer) >= self._config.buffer_size:
             await self._flush_buffer()
 
@@ -106,4 +114,5 @@ class ObservabilityEngine:
         events = list(self._buffer)
         self._buffer.clear()
         for sink in self._sinks:
-            await sink.write_batch(events)
+            if not getattr(sink, "realtime", False) is True:
+                await sink.write_batch(events)

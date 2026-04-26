@@ -85,3 +85,22 @@ async def test_run_latency_tracked(runner):
     config = CLIToolConfig(command="echo", args_format="positional")
     result = await runner.run(arguments={"0": "hi"}, config=config)
     assert result.latency_ms > 0
+
+
+async def test_run_raw_format(runner):
+    """Raw format — model provides the full command args as a string."""
+    config = CLIToolConfig(command="echo", args_format="raw")
+    result = await runner.run(arguments={"command": "-n hello raw"}, config=config)
+    assert result.success is True
+    assert "hello raw" in result.content
+
+
+async def test_run_raw_grep(runner, tmp_path):
+    """Raw format with grep — realistic usage."""
+    test_file = tmp_path / "test.py"
+    test_file.write_text("# TODO: fix this\nprint('hello')\n# TODO: add tests\n")
+    config = CLIToolConfig(command="grep", args_format="raw", cwd=str(tmp_path))
+    result = await runner.run(arguments={"command": "-n TODO test.py"}, config=config)
+    assert result.success is True
+    assert "TODO" in result.content
+    assert "1:" in result.content  # line number
