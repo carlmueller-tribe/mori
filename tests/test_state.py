@@ -67,3 +67,16 @@ def test_state_rejects_extra_fields():
             last_progress_at=datetime.now(timezone.utc),
             bogus_field="nope",
         )
+
+
+from mori.types import MemorySlice, MemoryLayer
+
+def test_state_memory_slice_default_none():
+    s = _make_state()
+    assert s.memory_slice is None
+
+def test_state_memory_slice_settable():
+    s = _make_state()
+    s.memory_slice = MemorySlice(records=[], total_tokens=0, query="test",
+        layers_searched=[MemoryLayer.WORKING], truncated=False)
+    assert s.memory_slice is not None and s.memory_slice.query == "test"

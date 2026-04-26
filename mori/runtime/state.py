@@ -8,6 +8,7 @@ from typing import Any
 from pydantic import Field
 
 from mori.types import (
+    MemorySlice,
     Message,
     MoriModel,
     RunId,
@@ -25,6 +26,9 @@ class MoriState(MoriModel):
     context: dict[str, Any] = Field(default_factory=dict)
     messages: list[Message] = Field(default_factory=list)
     status: RunStatus = RunStatus.RUNNING
+
+    # Memory
+    memory_slice: MemorySlice | None = None
 
     # Counters
     step_count: int = 0
