@@ -41,6 +41,7 @@ class AgentLoop:
         tools: ToolRegistry,
         observability: ObservabilityEngine | None = None,
         control: ControlBounds | None = None,
+        memory: Any | None = None,
     ) -> None:
         self._model = model
         self._tools = tools
@@ -49,6 +50,7 @@ class AgentLoop:
             from mori.control.bounds import ControlBounds, ControlConfig
             control = ControlBounds(config=ControlConfig())
         self._control = control
+        self._memory = memory
 
     async def _emit(self, event: MoriEvent) -> None:
         if self._obs:
@@ -64,9 +66,31 @@ class AgentLoop:
             status=RunStatus.RUNNING, started_at=now, last_progress_at=now,
         )
 
+    async def _phase_retrieve(self, state: MoriState) -> None:
+        if not self._memory:
+            return
+        from mori.observability.events import MemoryReadEvent
+        start = time.monotonic()
+        memory_slice = await self._memory.read(query=state.task, task_context=state.task, max_tokens=2000)
+        elapsed = (time.monotonic() - start) * 1000
+        state.memory_slice = memory_slice
+        await self._emit(MemoryReadEvent(
+            event_id=f"evt_{_uid()}", timestamp=datetime.now(timezone.utc),
+            run_id=state.run_id, query=state.task,
+            layers=[l for l in memory_slice.layers_searched],
+            records_returned=len(memory_slice.records), tokens_consumed=memory_slice.total_tokens,
+            duration_ms=elapsed,
+        ))
+
     def _assemble_request(self, state: MoriState) -> ModelRequest:
         tool_specs = self._tools.list_specs()
-        return ModelRequest(messages=state.messages, tools=tool_specs if tool_specs else None)
+        messages = list(state.messages)
+        if state.memory_slice and state.memory_slice.records:
+            lines = ["[Memory Context]"]
+            for r in state.memory_slice.records:
+                lines.append(f"- {r.content} (layer: {r.layer.value}, confidence: {r.confidence})")
+            messages.insert(0, Message(role="system", content="\n".join(lines)))
+        return ModelRequest(messages=messages, tools=tool_specs if tool_specs else None)
 
     async def _phase_plan(self, state: MoriState) -> None:
         request = self._assemble_request(state)
@@ -113,6 +137,25 @@ class AgentLoop:
             return StepOutcome.SUCCESS
         return StepOutcome.RETRY
 
+    async def _phase_update(self, state: MoriState) -> None:
+        if not self._memory:
+            return
+        from mori.observability.events import MemoryWriteEvent
+        from mori.types import MemoryRecord, MemoryRecordId, MemoryLayer
+        content = f"Step {state.step_count}: Task: {state.task[:100]}. Tool calls: {state.total_tool_calls}."
+        record = MemoryRecord(
+            record_id=MemoryRecordId(f"mem_{secrets.token_hex(12)}"),
+            layer=MemoryLayer.WORKING, content=content,
+            created_at=datetime.now(timezone.utc), updated_at=datetime.now(timezone.utc),
+            provenance="loop:update",
+        )
+        receipt = await self._memory.write([record])
+        await self._emit(MemoryWriteEvent(
+            event_id=f"evt_{_uid()}", timestamp=datetime.now(timezone.utc),
+            run_id=state.run_id, layer=MemoryLayer.WORKING,
+            record_ids=[str(r) for r in receipt.record_ids], records_written=len(receipt.record_ids),
+        ))
+
     async def run(self, task: str, thread_id: ThreadId | None = None, context: dict[str, Any] | None = None) -> RunResult:
         from mori.observability.events import (
             BoundViolationEvent,
@@ -154,9 +197,11 @@ class AgentLoop:
                 run_id=state.run_id, step_id=step_id, step_number=state.step_count, phase=Phase.PLAN,
             ))
 
+            await self._phase_retrieve(state)
             await self._phase_plan(state)
             await self._phase_act(state)
             outcome = self._phase_evaluate(state)
+            await self._phase_update(state)
 
             step_elapsed = (time.monotonic() - step_start) * 1000
             await self._emit(StepEndEvent(
@@ -180,6 +225,37 @@ class AgentLoop:
             total_input_tokens=state.total_input_tokens, total_output_tokens=state.total_output_tokens,
             duration_ms=elapsed_ms,
         ))
+
+        # Write episodic summary
+        if self._memory:
+            from mori.observability.events import MemoryWriteEvent
+            from mori.types import MemoryRecord, MemoryRecordId, MemoryLayer
+            run_result = RunResult.from_state(state, duration_ms=elapsed_ms)
+            tools_used: set[str] = set()
+            for msg in state.messages:
+                if msg.tool_calls:
+                    for tc in msg.tool_calls:
+                        tools_used.add(tc.name)
+            ep_content = (
+                f'Run "{state.task[:100]}": {state.status.value} in {state.step_count} steps. '
+                f'Tools: {", ".join(sorted(tools_used)) or "none"}. '
+                f'Result: {(run_result.final_output or "")[:200]}'
+            )
+            record = MemoryRecord(
+                record_id=MemoryRecordId(f"mem_{secrets.token_hex(12)}"),
+                layer=MemoryLayer.EPISODIC, content=ep_content,
+                created_at=datetime.now(timezone.utc), updated_at=datetime.now(timezone.utc),
+                provenance="loop:episodic",
+            )
+            receipt = await self._memory.write([record])
+            await self._emit(MemoryWriteEvent(
+                event_id=f"evt_{_uid()}", timestamp=datetime.now(timezone.utc),
+                run_id=state.run_id, layer=MemoryLayer.EPISODIC,
+                record_ids=[str(r) for r in receipt.record_ids], records_written=1,
+            ))
+            if self._obs:
+                await self._obs.flush()
+            return run_result
 
         if self._obs:
             await self._obs.flush()
