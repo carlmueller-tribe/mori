@@ -46,6 +46,29 @@ def divide(a: float, b: float) -> str:
     return str(a / b)
 
 
+def calculate(operation: str, numbers: list[float]) -> str:
+    """Perform a math operation on a list of numbers.
+
+    operation: one of 'sum', 'average', 'min', 'max', 'count'
+    numbers: list of numbers to operate on
+    """
+    if not numbers:
+        return "Error: provide at least one number"
+    op = operation.lower()
+    if op == "sum":
+        return str(sum(numbers))
+    elif op == "average":
+        return str(sum(numbers) / len(numbers))
+    elif op == "min":
+        return str(min(numbers))
+    elif op == "max":
+        return str(max(numbers))
+    elif op == "count":
+        return str(len(numbers))
+    else:
+        return f"Error: unknown operation '{op}'. Supported: sum, average, min, max, count"
+
+
 # ── File tools ───────────────────────────────────────────────
 
 def list_files(directory: str = ".") -> str:
@@ -98,6 +121,7 @@ async def main():
         .tool(subtract, description="Subtract b from a")
         .tool(multiply, description="Multiply two numbers")
         .tool(divide, description="Divide a by b")
+        .tool(calculate, description="Calculate over a list of numbers: sum, average, min, max, count")
         .tool(list_files, description="List Python files in a directory with line counts")
         .tool(read_file, description="Read the contents of a file")
         .tool(format_table, description="Format data as an aligned text table")
