@@ -26,6 +26,7 @@ class MoriBuilder:
         self._mcp_servers: list[dict[str, Any]] = []
         self._sinks: list[Any] = []
         self._config: dict[str, Any] = {}
+        self._memory_config: dict | None = None
 
     def model(
         self,
@@ -99,6 +100,10 @@ class MoriBuilder:
             raise ValueError(f"Unknown sink type: {sink_type}. Supported: stdout, jsonl")
         return self
 
+    def memory_backend(self, backend_type: str, **kwargs: Any) -> MoriBuilder:
+        self._memory_config = {"type": backend_type, **kwargs}
+        return self
+
     def config(self, **kwargs: Any) -> MoriBuilder:
         self._config.update(kwargs)
         return self
@@ -123,10 +128,47 @@ class MoriBuilder:
         for cli in self._cli_tools:
             registry.register_cli(**cli)
 
-        # 4. Agent loop
-        loop = AgentLoop(model=self._model_adapter, tools=registry, observability=obs, control=control)
+        # 4. Memory
+        memory_module = None
+        if self._memory_config:
+            from mori.memory.module import MemoryModule
+            from mori.memory.backends.inmemory import InMemoryBackend
+            from mori.types import MemoryConfig
+            backend_type = self._memory_config["type"]
+            if backend_type == "inmemory":
+                backend = InMemoryBackend()
+            elif backend_type == "sqlite":
+                from mori.memory.backends.sqlite import SQLiteBackend
+                backend = SQLiteBackend(path=self._memory_config["path"])
+                # Note: SQLiteBackend needs initialize() — call it synchronously via sqlite3
+                import sqlite3
+                conn = sqlite3.connect(self._memory_config["path"])
+                conn.execute("""CREATE TABLE IF NOT EXISTS memory_records (
+                    record_id TEXT PRIMARY KEY, layer TEXT NOT NULL, content TEXT NOT NULL,
+                    metadata TEXT, created_at TEXT NOT NULL, updated_at TEXT NOT NULL,
+                    ttl_seconds INTEGER, provenance TEXT, confidence REAL DEFAULT 1.0, embedding BLOB)""")
+                conn.execute("CREATE INDEX IF NOT EXISTS idx_layer ON memory_records(layer)")
+                conn.commit()
+                conn.close()
+                # Reopen via backend
+                backend._conn = sqlite3.connect(self._memory_config["path"])
+            else:
+                raise ValueError(f"Unknown memory backend: {backend_type}")
+            embedder = None
+            try:
+                from mori.memory.embedder import AnthropicEmbedder
+                embedder = AnthropicEmbedder()
+            except ImportError:
+                pass
+            memory_module = MemoryModule(backend=backend, config=MemoryConfig(),
+                embedder=embedder, model=self._model_adapter)
 
-        return Mori(loop=loop, tools=registry, observability=obs, mcp_configs=self._mcp_servers)
+        # 5. Agent loop
+        loop = AgentLoop(model=self._model_adapter, tools=registry, observability=obs,
+                         control=control, memory=memory_module)
+
+        return Mori(loop=loop, tools=registry, observability=obs,
+                    mcp_configs=self._mcp_servers, memory=memory_module)
 
 
 class Mori:
@@ -138,12 +180,14 @@ class Mori:
         tools: ToolRegistry,
         observability: ObservabilityEngine | None = None,
         mcp_configs: list[dict[str, Any]] | None = None,
+        memory: Any = None,
     ) -> None:
         self._loop = loop
         self._tools = tools
         self._obs = observability
         self._mcp_configs = mcp_configs or []
         self._mcp_connected = False
+        self._memory = memory
 
     @staticmethod
     def builder() -> MoriBuilder:
@@ -168,6 +212,12 @@ class Mori:
     def tools(self) -> ToolRegistry:
         return self._tools
 
+    @property
+    def memory(self) -> Any:
+        return self._memory
+
     async def close(self) -> None:
+        if self._memory:
+            await self._memory.close()
         if self._obs:
             await self._obs.close()
