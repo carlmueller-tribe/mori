@@ -197,6 +197,57 @@ class AuthConfig(MoriModel):
     header_name: str = "Authorization"
 
 
+# ── Memory Config & Lifecycle ────────────────────────────────
+
+class MemoryConfig(MoriModel):
+    default_ttl_seconds: dict[MemoryLayer, int | None] = Field(default_factory=lambda: {
+        MemoryLayer.WORKING: 3600,
+        MemoryLayer.EPISODIC: None,
+        MemoryLayer.SEMANTIC: None,
+        MemoryLayer.PERSONALIZED: None,
+    })
+    max_records_per_layer: dict[MemoryLayer, int] = Field(default_factory=lambda: {
+        MemoryLayer.WORKING: 200,
+        MemoryLayer.EPISODIC: 10_000,
+        MemoryLayer.SEMANTIC: 50_000,
+        MemoryLayer.PERSONALIZED: 5_000,
+    })
+    deduplication_threshold: float = 0.95
+    conflict_resolution: Literal["highest_confidence", "most_recent", "keep_all"] = "highest_confidence"
+    embedding_dimensions: int = 1536
+    auto_forget_interval_sec: float = 300.0
+
+
+class MemoryFilters(MoriModel):
+    min_confidence: float | None = None
+    max_age_seconds: int | None = None
+    provenance: str | None = None
+    metadata_match: dict[str, Any] | None = None
+    exclude_ids: list[MemoryRecordId] = Field(default_factory=list)
+
+
+class ForgetPolicy(MoriModel):
+    expire_ttl: bool = True
+    prune_below_confidence: float | None = 0.2
+    deduplicate: bool = True
+    max_records_per_layer: dict[MemoryLayer, int] | None = None
+
+
+class ForgetReport(MoriModel):
+    expired: int
+    pruned: int
+    deduplicated: int
+    total_deleted: int
+
+
+class MemoryStats(MoriModel):
+    total_records: int
+    records_per_layer: dict[MemoryLayer, int]
+    estimated_tokens_per_layer: dict[MemoryLayer, int]
+    oldest_record_age_seconds: dict[MemoryLayer, float | None]
+    newest_record_age_seconds: dict[MemoryLayer, float | None]
+
+
 # ── Error Hierarchy ──────────────────────────────────────────
 
 class MoriError(Exception):
