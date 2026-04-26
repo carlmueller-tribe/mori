@@ -263,6 +263,21 @@ class MemoryRecord(MoriModel):
     ttl_seconds: int | None = None
 
 
+class MemorySlice(MoriModel):
+    records: list[MemoryRecord]
+    total_tokens: int
+    query: str
+    layers_searched: list[MemoryLayer]
+    truncated: bool = False
+    conflicts: list[tuple[MemoryRecordId, MemoryRecordId]] = Field(default_factory=list)
+
+
+class WriteReceipt(MoriModel):
+    record_ids: list[MemoryRecordId]
+    layer: MemoryLayer
+    timestamp: datetime
+
+
 # ── Error Hierarchy ──────────────────────────────────────────
 
 class MoriError(Exception):
