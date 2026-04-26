@@ -248,6 +248,21 @@ class MemoryStats(MoriModel):
     newest_record_age_seconds: dict[MemoryLayer, float | None]
 
 
+# ── Memory Record ────────────────────────────────────────────
+
+class MemoryRecord(MoriModel):
+    record_id: MemoryRecordId
+    layer: MemoryLayer
+    content: str
+    created_at: datetime
+    updated_at: datetime
+    confidence: float = 1.0
+    embedding: list[float] = Field(default_factory=list)
+    provenance: str | None = None
+    metadata: dict[str, Any] = Field(default_factory=dict)
+    ttl_seconds: int | None = None
+
+
 # ── Error Hierarchy ──────────────────────────────────────────
 
 class MoriError(Exception):
