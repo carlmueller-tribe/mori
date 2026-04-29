@@ -383,3 +383,27 @@ assert len(budget_events) > 0
 - Stage 6 calls model and inserts summary message into state
 - Pipeline stops early when utilisation drops below threshold
 - `CompactionReport` correctly tracks tokens reclaimed per stage
+
+---
+
+## 11. Deferred to v0.5 — QuotaManager
+
+The BudgetManager manages what fits in the context window *right now* (per-request, resets each run).
+Cross-run spend tracking is a governance concern that belongs in v0.5 alongside the Permission Engine.
+
+**QuotaManager** (v0.5 addition):
+```python
+.quota(
+    max_tokens_per_run=50_000,
+    max_tokens_per_day=5_000_000,
+    max_cost_per_day_usd=10.00,
+    backend="sqlite",        # persists across restarts
+    on_exceeded="escalate",  # or "deny" or "warn"
+)
+```
+
+Handoff from v0.4: `BudgetManager` emits a `TokenSpendEvent` at run end (input + output tokens +
+estimated cost). `QuotaManager` in v0.5 accumulates these into a persistent daily ledger per identity.
+
+Requires: identity (who is spending?), persistence (cross-run ledger), policy (quota rules),
+enforcement (deny/escalate when exceeded) — all of which v0.5 introduces via the Permission Engine.
