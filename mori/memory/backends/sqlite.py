@@ -32,7 +32,7 @@ class SQLiteBackend:
             r.created_at.isoformat(), r.updated_at.isoformat(), r.ttl_seconds, r.provenance, r.confidence, emb)
 
     def _from_row(self, row: tuple) -> MemoryRecord:
-        emb = np.frombuffer(row[9], dtype=np.float32).tolist() if row[9] else None
+        emb = np.frombuffer(row[9], dtype=np.float32).tolist() if row[9] else []
         return MemoryRecord(record_id=MemoryRecordId(row[0]), layer=MemoryLayer(row[1]), content=row[2],
             metadata=json.loads(row[3]) if row[3] else {}, created_at=datetime.fromisoformat(row[4]),
             updated_at=datetime.fromisoformat(row[5]), ttl_seconds=row[6], provenance=row[7],
