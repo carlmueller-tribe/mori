@@ -27,6 +27,8 @@ class MoriBuilder:
         self._sinks: list[Any] = []
         self._config: dict[str, Any] = {}
         self._memory_config: dict | None = None
+        self._skill_registry_path: str | None = None
+        self._budget_config: dict | None = None
 
     def model(
         self,
@@ -104,6 +106,29 @@ class MoriBuilder:
         self._memory_config = {"type": backend_type, **kwargs}
         return self
 
+    def skill_registry(self, path: str) -> MoriBuilder:
+        self._skill_registry_path = path
+        return self
+
+    def budget(
+        self,
+        total_context_tokens: int = 200_000,
+        compaction_threshold_pct: float = 0.85,
+        min_generation_tokens: int = 1000,
+        max_result_tokens: int = 4000,
+        disable_compaction: bool = False,
+        slot_overrides: dict[str, float] | None = None,
+    ) -> MoriBuilder:
+        self._budget_config = {
+            "total_context_tokens": total_context_tokens,
+            "compaction_threshold_pct": compaction_threshold_pct,
+            "min_generation_tokens": min_generation_tokens,
+            "max_result_tokens": max_result_tokens,
+            "disable_compaction": disable_compaction,
+            "slot_overrides": slot_overrides or {},
+        }
+        return self
+
     def config(self, **kwargs: Any) -> MoriBuilder:
         self._config.update(kwargs)
         return self
@@ -163,12 +188,29 @@ class MoriBuilder:
             memory_module = MemoryModule(backend=backend, config=MemoryConfig(),
                 embedder=embedder, model=self._model_adapter)
 
-        # 5. Agent loop
+        # 5. Skills module
+        skills_module = None
+        if self._skill_registry_path:
+            from mori.skills.registry import FilesystemRegistry
+            from mori.skills.module import SkillsModule
+            reg = FilesystemRegistry(self._skill_registry_path)
+            skills_module = SkillsModule(registry=reg)
+
+        # 6. Budget manager
+        budget_manager = None
+        if self._budget_config:
+            from mori.budget.manager import BudgetManager
+            from mori.budget.types import BudgetConfig
+            budget_manager = BudgetManager(BudgetConfig(**self._budget_config))
+
+        # 7. Agent loop
         loop = AgentLoop(model=self._model_adapter, tools=registry, observability=obs,
-                         control=control, memory=memory_module)
+                         control=control, memory=memory_module,
+                         skills=skills_module, budget=budget_manager)
 
         return Mori(loop=loop, tools=registry, observability=obs,
-                    mcp_configs=self._mcp_servers, memory=memory_module)
+                    mcp_configs=self._mcp_servers, memory=memory_module,
+                    skills=skills_module, budget=budget_manager)
 
 
 class Mori:
@@ -181,6 +223,8 @@ class Mori:
         observability: ObservabilityEngine | None = None,
         mcp_configs: list[dict[str, Any]] | None = None,
         memory: Any = None,
+        skills: Any = None,
+        budget: Any = None,
     ) -> None:
         self._loop = loop
         self._tools = tools
@@ -188,6 +232,8 @@ class Mori:
         self._mcp_configs = mcp_configs or []
         self._mcp_connected = False
         self._memory = memory
+        self._skills = skills
+        self._budget = budget
 
     @staticmethod
     def builder() -> MoriBuilder:
@@ -215,6 +261,14 @@ class Mori:
     @property
     def memory(self) -> Any:
         return self._memory
+
+    @property
+    def skills(self) -> Any:
+        return self._skills
+
+    @property
+    def budget(self) -> Any:
+        return self._budget
 
     async def close(self) -> None:
         if self._memory:
