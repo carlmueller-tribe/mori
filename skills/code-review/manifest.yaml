@@ -1,0 +1,36 @@
+name: code-review
+version: 1.0.0
+description: Review source files for correctness, style, and test coverage.
+
+capabilities:
+  - code-review
+  - quality-analysis
+
+scope:
+  domains: [code]
+  contexts: [pr-review, development]
+
+preconditions:
+  tools_required: [file-reader]
+  min_context_tokens: 300
+
+constraints:
+  max_files: 20
+  requires_approval_for: []
+
+triggers:
+  semantic:
+    - "review"
+    - "code quality"
+    - "PR review"
+    - "check code"
+    - "feedback on"
+  structural: []
+
+progressive_disclosure:
+  abstract: Review code for correctness, style, and missing tests.
+  summary: Read each requested file. Check naming, function length, and dead code
+    (LOW severity). Check logic, null handling, and error paths (MEDIUM/HIGH).
+    Identify untested public functions (MEDIUM). Summarise findings sorted
+    HIGH to LOW.
+  full: SKILL.md

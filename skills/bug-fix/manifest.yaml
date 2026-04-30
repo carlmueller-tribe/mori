@@ -1,0 +1,37 @@
+name: bug-fix
+version: 1.0.0
+description: Fix a failing test or broken code by reproducing, isolating, and patching the root cause.
+
+capabilities:
+  - debugging
+  - test-repair
+
+scope:
+  domains: [code, testing]
+  contexts: [ci, development]
+
+preconditions:
+  tools_required: [file-reader, test-runner]
+  min_context_tokens: 500
+
+constraints:
+  max_files: 10
+  requires_approval_for: []
+
+triggers:
+  semantic:
+    - "fix failing test"
+    - "debug"
+    - "broken"
+    - "error"
+    - "exception"
+    - "traceback"
+  structural: []
+
+progressive_disclosure:
+  abstract: Fix a failing test by isolating and patching the root cause.
+  summary: Read the failing test to understand expected behaviour. Run it to capture the
+    error. Read the source under test and trace the execution path to the failure.
+    Apply the smallest possible change. Verify the test passes and no regressions
+    are introduced.
+  full: SKILL.md

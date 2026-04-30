@@ -1,0 +1,35 @@
+name: test-generation
+version: 1.0.0
+description: Write tests for untested code to increase meaningful test coverage.
+
+capabilities:
+  - test-writing
+  - coverage-analysis
+
+scope:
+  domains: [code, testing]
+  contexts: [development, ci]
+
+preconditions:
+  tools_required: [file-reader, file-writer]
+  min_context_tokens: 400
+
+constraints:
+  max_files: 10
+  requires_approval_for: []
+
+triggers:
+  semantic:
+    - "write tests"
+    - "add coverage"
+    - "test generation"
+    - "missing tests"
+    - "unit test"
+  structural: []
+
+progressive_disclosure:
+  abstract: Write tests for untested code to increase suite coverage.
+  summary: Read the source file and identify untested public functions and uncovered
+    branches. Write pytest test functions with descriptive names. Each test covers
+    one behaviour. Verify all new tests pass and no regressions appear.
+  full: SKILL.md
