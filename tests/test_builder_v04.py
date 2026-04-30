@@ -96,8 +96,8 @@ def test_builder_order_independent(tmp_path):
         # budget before skill_registry
         a2 = (Mori.builder().model("anthropic", api_key="x")
               .budget(total_context_tokens=50_000).skill_registry(str(tmp_path)).build())
-        assert a1.skills is not None
-        assert a2.budget is not None
+        assert a1.skills is not None and a1.budget is not None
+        assert a2.skills is not None and a2.budget is not None
 
 
 @pytest.mark.asyncio
