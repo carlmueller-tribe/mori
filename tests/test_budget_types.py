@@ -56,3 +56,23 @@ def test_compaction_modules_arbitrary_types():
     m = CompactionModules(memory=Fake(), skills=None, model=None)
     assert m.memory is not None
     assert m.skills is None
+
+def test_rebalance_hints_defaults():
+    h = RebalanceHints()
+    assert h.extra_memory_tokens == 0
+    assert h.extra_skill_tokens == 0
+
+def test_slot_report():
+    r = SlotReport(slot=BudgetSlot.CONVERSATION, allocated=30_000, consumed=5_000, pct_used=0.16)
+    assert r.allocated == 30_000
+    assert r.pct_used == 0.16
+
+def test_budget_report():
+    slot_report = SlotReport(slot=BudgetSlot.MEMORY, allocated=20_000, consumed=1_000, pct_used=0.05)
+    r = BudgetReport(total_tokens=100_000, total_consumed=1_000, utilization=0.01, slots=[slot_report])
+    assert r.total_tokens == 100_000
+    assert len(r.slots) == 1
+
+def test_budget_config_unknown_slot_override_raises():
+    with pytest.raises(ValidationError):
+        BudgetConfig(slot_overrides={"nonexistent_slot": 0.1})

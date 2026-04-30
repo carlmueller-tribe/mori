@@ -25,10 +25,18 @@ class BudgetConfig(MoriModel):
 
     @model_validator(mode="after")
     def _validate_overrides(self) -> BudgetConfig:
-        if self.slot_overrides and sum(self.slot_overrides.values()) > 1.0:
-            raise ValueError(
-                f"slot_overrides sum to {sum(self.slot_overrides.values()):.3f}, must be <= 1.0"
-            )
+        if self.slot_overrides:
+            total = sum(self.slot_overrides.values())
+            if total > 1.0:
+                raise ValueError(f"slot_overrides sum to {total:.3f}, must be <= 1.0")
+        return self
+
+    @model_validator(mode="after")
+    def _validate_override_keys(self) -> BudgetConfig:
+        valid = {s.value for s in BudgetSlot}
+        unknown = set(self.slot_overrides) - valid
+        if unknown:
+            raise ValueError(f"slot_overrides contains unknown slots: {unknown}")
         return self
 
 
@@ -83,4 +91,4 @@ class CompactionModules(MoriModel):
     memory: Any | None = None
     skills: Any | None = None
     model: Any | None = None
-    model_config = {"arbitrary_types_allowed": True, "frozen": False, "extra": "forbid"}
+    model_config = {"arbitrary_types_allowed": True}
