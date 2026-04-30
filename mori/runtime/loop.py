@@ -7,6 +7,7 @@ import time
 from datetime import datetime, timezone
 from typing import Any, TYPE_CHECKING
 
+from mori.budget.types import BudgetSlot
 from mori.model.base import ModelAdapter
 from mori.runtime.result import RunResult
 from mori.runtime.state import MoriState
@@ -42,6 +43,8 @@ class AgentLoop:
         observability: ObservabilityEngine | None = None,
         control: ControlBounds | None = None,
         memory: Any | None = None,
+        skills: Any | None = None,
+        budget: Any | None = None,
     ) -> None:
         self._model = model
         self._tools = tools
@@ -51,6 +54,8 @@ class AgentLoop:
             control = ControlBounds(config=ControlConfig())
         self._control = control
         self._memory = memory
+        self._skills = skills
+        self._budget = budget
 
     async def _emit(self, event: MoriEvent) -> None:
         if self._obs:
@@ -67,29 +72,141 @@ class AgentLoop:
         )
 
     async def _phase_retrieve(self, state: MoriState) -> None:
-        if not self._memory:
+        # Memory read (unchanged from v0.3)
+        if self._memory:
+            from mori.observability.events import MemoryReadEvent
+            start = time.monotonic()
+            memory_slice = await self._memory.read(
+                query=state.task, task_context=state.task, max_tokens=2000
+            )
+            elapsed = (time.monotonic() - start) * 1000
+            state.memory_slice = memory_slice
+            if self._budget:
+                self._budget.consume(BudgetSlot.MEMORY, memory_slice.total_tokens)
+            await self._emit(MemoryReadEvent(
+                event_id=f"evt_{_uid()}", timestamp=datetime.now(timezone.utc),
+                run_id=state.run_id, query=state.task,
+                layers=[l for l in memory_slice.layers_searched],
+                records_returned=len(memory_slice.records),
+                tokens_consumed=memory_slice.total_tokens,
+                duration_ms=elapsed,
+            ))
+
+        # Skill discovery + load
+        if self._skills:
+            from mori.observability.events import SkillDiscoverEvent, SkillLoadEvent
+            available_tool_names = [s.name for s in self._tools.list_specs()]
+            skill_budget_tokens = (
+                self._budget.get_allocation(BudgetSlot.SKILL).allocated
+                if self._budget else 999_999
+            )
+            disc_start = time.monotonic()
+            candidates = self._skills.discover(
+                state.task,
+                available_tools=available_tool_names,
+                available_tokens=skill_budget_tokens,
+            )
+            disc_elapsed = (time.monotonic() - disc_start) * 1000
+
+            top = candidates[0] if candidates else None
+            await self._emit(SkillDiscoverEvent(
+                event_id=f"evt_{_uid()}", timestamp=datetime.now(timezone.utc),
+                run_id=state.run_id,
+                task_preview=state.task[:80],
+                candidates_found=len(candidates),
+                top_match_name=top.manifest.name if top else None,
+                top_match_score=top.score if top else None,
+                duration_ms=disc_elapsed,
+            ))
+
+            if top:
+                load_start = time.monotonic()
+                payload = await self._skills.load(
+                    top.manifest.name, "SUMMARY", max_tokens=skill_budget_tokens
+                )
+                load_elapsed = (time.monotonic() - load_start) * 1000
+                state.active_skill_payload = payload
+                if self._budget:
+                    self._budget.consume(BudgetSlot.SKILL, payload.token_estimate)
+                await self._emit(SkillLoadEvent(
+                    event_id=f"evt_{_uid()}", timestamp=datetime.now(timezone.utc),
+                    run_id=state.run_id,
+                    skill_id=payload.skill_id,
+                    disclosure_level=payload.disclosure_level,
+                    token_estimate=payload.token_estimate,
+                    duration_ms=load_elapsed,
+                ))
+
+    async def _pre_plan_compact(self, state: MoriState) -> None:
+        if not self._budget:
             return
-        from mori.observability.events import MemoryReadEvent
-        start = time.monotonic()
-        memory_slice = await self._memory.read(query=state.task, task_context=state.task, max_tokens=2000)
-        elapsed = (time.monotonic() - start) * 1000
-        state.memory_slice = memory_slice
-        await self._emit(MemoryReadEvent(
+        from mori.observability.events import BudgetRebalanceEvent, CompactionEvent
+        from mori.budget.types import CompactionModules
+
+        budgets = self._budget.rebalance(Phase.PLAN)
+        report = self._budget.assemble_budget_report()
+        await self._emit(BudgetRebalanceEvent(
             event_id=f"evt_{_uid()}", timestamp=datetime.now(timezone.utc),
-            run_id=state.run_id, query=state.task,
-            layers=[l for l in memory_slice.layers_searched],
-            records_returned=len(memory_slice.records), tokens_consumed=memory_slice.total_tokens,
-            duration_ms=elapsed,
+            run_id=state.run_id, phase=Phase.PLAN.value,
+            allocations={slot: b.allocated for slot, b in budgets.items()},
+            total_consumed=report.total_consumed,
+            utilization=report.utilization,
         ))
 
+        if self._budget.needs_compaction():
+            compact_report = await self._budget.compact(
+                state,
+                CompactionModules(
+                    memory=self._memory,
+                    skills=self._skills,
+                    model=self._model,
+                ),
+            )
+            await self._emit(CompactionEvent(
+                event_id=f"evt_{_uid()}", timestamp=datetime.now(timezone.utc),
+                run_id=state.run_id,
+                stages_run=compact_report.stages,
+                total_tokens_reclaimed=compact_report.total_tokens_reclaimed,
+                final_utilization=compact_report.final_utilization,
+            ))
+
     def _assemble_request(self, state: MoriState) -> ModelRequest:
-        tool_specs = self._tools.list_specs()
+        # Schema deferral (Stage 2 compaction)
+        if self._budget and self._budget._defer_schemas:
+            recent_tools: set[str] = set()
+            for msg in state.messages[-6:]:
+                if msg.tool_calls:
+                    for tc in msg.tool_calls:
+                        recent_tools.add(tc.name)
+            tool_specs = []
+            for spec in self._tools.list_specs():
+                if spec.name in recent_tools:
+                    tool_specs.append(spec)
+                else:
+                    from mori.types import ToolSpec
+                    tool_specs.append(ToolSpec(
+                        tool_id=spec.tool_id,
+                        name=spec.name,
+                        description=spec.description,
+                        input_schema={},
+                        source=spec.source,
+                    ))
+        else:
+            tool_specs = self._tools.list_specs()
+
         messages = list(state.messages)
         if state.memory_slice and state.memory_slice.records:
             lines = ["[Memory Context]"]
             for r in state.memory_slice.records:
                 lines.append(f"- {r.content} (layer: {r.layer.value}, confidence: {r.confidence})")
             messages.insert(0, Message(role="system", content="\n".join(lines)))
+
+        # Inject [Skill Context]
+        if state.active_skill_payload:
+            p = state.active_skill_payload
+            lines = [f"[Skill Context] ({p.skill_id})", p.content]
+            messages.insert(0, Message(role="system", content="\n".join(lines)))
+
         return ModelRequest(messages=messages, tools=tool_specs if tool_specs else None)
 
     async def _phase_plan(self, state: MoriState) -> None:
@@ -198,6 +315,7 @@ class AgentLoop:
             ))
 
             await self._phase_retrieve(state)
+            await self._pre_plan_compact(state)
             await self._phase_plan(state)
             await self._phase_act(state)
             outcome = self._phase_evaluate(state)
