@@ -208,3 +208,31 @@ async def test_stage6_conversation_summarize(mgr):
     # Summary message inserted
     assert any("[Conversation Summary]" in (m.content if isinstance(m.content, str) else "")
                for m in state.messages)
+
+
+def test_recount_from_state(mgr):
+    """recount_from_state routes messages to correct slots by role and content."""
+    from mori.types import Message
+    state_stub = type("S", (), {"messages": [
+        Message(role="user", content="do the thing"),
+        Message(role="system", content="[Memory Context]\n- fact"),
+        Message(role="system", content="[Skill Context: bug-fix]\nsummary"),
+        Message(role="system", content="[System Prompt] You are an agent."),
+        Message(role="assistant", content="thinking..."),
+    ]})()
+    mgr.consume(BudgetSlot.CONVERSATION, 5000)  # pre-existing consumption
+    mgr.recount_from_state(state_stub)
+    # pre-existing consumption cleared
+    assert mgr.get_allocation(BudgetSlot.MEMORY).consumed > 0
+    assert mgr.get_allocation(BudgetSlot.SKILL).consumed > 0
+    assert mgr.get_allocation(BudgetSlot.SYSTEM_PROMPT).consumed > 0
+    assert mgr.get_allocation(BudgetSlot.CONVERSATION).consumed > 0
+
+
+def test_rebalance_with_hints(mgr):
+    """rebalance hints add extra tokens on top of phase allocation."""
+    from mori.budget.types import RebalanceHints
+    before = mgr.get_allocation(BudgetSlot.MEMORY).allocated
+    budgets = mgr.rebalance(Phase.PLAN, hints=RebalanceHints(extra_memory_tokens=5000))
+    after = budgets[BudgetSlot.MEMORY].allocated
+    assert after > before

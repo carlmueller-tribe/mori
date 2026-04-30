@@ -103,15 +103,15 @@ class BudgetManager:
         fractions = dict(_BASE_ALLOC)
         if phase in _PHASE_OVERRIDES:
             fractions.update(_PHASE_OVERRIDES[phase])
+        # Apply per-slot config overrides before normalization
+        for slot_str, pct in self._config.slot_overrides.items():
+            try:
+                fractions[BudgetSlot(slot_str)] = pct
+            except ValueError:
+                pass
+        # Normalize so fractions sum to 1.0 regardless of override combinations
         total_pct = sum(fractions.values())
         fractions = {k: v / total_pct for k, v in fractions.items()}
-        config_overrides = self._config.slot_overrides
-        if config_overrides:
-            for slot_str, pct in config_overrides.items():
-                try:
-                    fractions[BudgetSlot(slot_str)] = pct
-                except ValueError:
-                    pass
         self._alloc_from_fractions(fractions)
         self._enforce_min_generation()
         if hints:
@@ -134,12 +134,13 @@ class BudgetManager:
         for slot in BudgetSlot:
             self.reset_slot(slot)
         for msg in state.messages:
+            # list[dict] content (e.g. multimodal) is counted as 0 tokens — known approximation
             content = msg.content if isinstance(msg.content, str) else ""
             tokens = len(content) // 4
             if msg.role == "system":
                 if "[Memory Context]" in content:
                     self.consume(BudgetSlot.MEMORY, tokens)
-                elif "[Skill Context]" in content:
+                elif "[Skill Context" in content:
                     self.consume(BudgetSlot.SKILL, tokens)
                 else:
                     self.consume(BudgetSlot.SYSTEM_PROMPT, tokens)
@@ -203,12 +204,13 @@ class BudgetManager:
     async def _stage_result_trim(self, state: Any, _: CompactionModules) -> int:
         max_chars = self._config.max_result_tokens * 4
         reclaimed = 0
-        for msg in state.messages:
+        for i, msg in enumerate(state.messages):
             content = msg.content if isinstance(msg.content, str) else ""
             if msg.role == "tool" and len(content) > max_chars:
                 old_tokens = len(content) // 4
-                msg.content = content[:max_chars] + "… [truncated]"
-                new_tokens = len(msg.content) // 4
+                new_content = content[:max_chars] + "… [truncated]"
+                state.messages[i] = msg.model_copy(update={"content": new_content})
+                new_tokens = len(new_content) // 4
                 reclaimed += old_tokens - new_tokens
         if reclaimed:
             self.release(BudgetSlot.CONVERSATION, reclaimed)
@@ -219,6 +221,12 @@ class BudgetManager:
         return 0
 
     async def _stage_turn_snip(self, state: Any, _: CompactionModules) -> int:
+        """Remove the oldest single tool-call/result round from state.messages.
+
+        Deliberately removes only one round per invocation — conservative by design.
+        If more compaction is needed, later (more aggressive) stages handle it.
+        Skips the initial user message (index 0) and always preserves the last 4 messages.
+        """
         reclaimed = 0
         i = 1  # skip initial user message
         while i < len(state.messages) - 4:
