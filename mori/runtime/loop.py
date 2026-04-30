@@ -119,7 +119,7 @@ class AgentLoop:
                 duration_ms=disc_elapsed,
             ))
 
-            if top:
+            if top and top.compatibility_report.context_fits:
                 load_start = time.monotonic()
                 payload = await self._skills.load(
                     top.manifest.name, "SUMMARY", max_tokens=skill_budget_tokens
@@ -195,13 +195,15 @@ class AgentLoop:
             tool_specs = self._tools.list_specs()
 
         messages = list(state.messages)
+
+        # Insert memory context first (gets pushed to index 1 by skill insertion)
         if state.memory_slice and state.memory_slice.records:
             lines = ["[Memory Context]"]
             for r in state.memory_slice.records:
                 lines.append(f"- {r.content} (layer: {r.layer.value}, confidence: {r.confidence})")
             messages.insert(0, Message(role="system", content="\n".join(lines)))
 
-        # Inject [Skill Context]
+        # Insert skill context last (ends up at index 0)
         if state.active_skill_payload:
             p = state.active_skill_payload
             lines = [f"[Skill Context] ({p.skill_id})", p.content]
