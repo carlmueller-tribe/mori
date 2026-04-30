@@ -62,7 +62,6 @@ def test_compaction_event():
 
 
 def test_mori_state_has_active_skill_payload():
-    from datetime import datetime, timezone
     from mori.runtime.state import MoriState
     from mori.types import RunId, ThreadId, RunStatus
     state = MoriState(

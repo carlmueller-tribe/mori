@@ -7,7 +7,7 @@ from typing import Any, Protocol, runtime_checkable
 
 from pydantic import Field
 
-from mori.budget.types import BudgetSlot
+from mori.budget.types import BudgetSlot, StageResult
 from mori.types import (
     DisclosureLevel,
     MemoryLayer,
@@ -145,7 +145,7 @@ class BudgetRebalanceEvent(MoriEvent):
 
 class CompactionEvent(MoriEvent):
     event_type: str = "budget.compaction"
-    stages_run: list[Any]
+    stages_run: list[StageResult]
     total_tokens_reclaimed: int
     final_utilization: float
 
