@@ -98,6 +98,13 @@ def test_load_skill_md(tmp_path):
     assert "Do the thing" in content
 
 
+def test_load_skill_md_missing_raises(tmp_path):
+    skill_dir = tmp_path / "no-md"
+    skill_dir.mkdir()
+    with pytest.raises(SkillValidationError, match="SKILL.md"):
+        load_skill_md(str(skill_dir))
+
+
 def test_name_invalid_chars_raises(tmp_path):
     skill_dir = tmp_path / "bad-name"
     skill_dir.mkdir()

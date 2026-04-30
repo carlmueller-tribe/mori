@@ -44,7 +44,7 @@ def parse_manifest(skill_dir: str) -> SkillManifest:
         )
 
     summary = str(disclosure.get("summary", ""))
-    if len(summary) // 4 > 500:
+    if len(summary) // 4 >= 500:
         raise SkillValidationError(
             f"manifest 'summary' exceeds 500 tokens (estimated)", path=skill_dir
         )
@@ -71,4 +71,6 @@ def parse_manifest(skill_dir: str) -> SkillManifest:
 
 def load_skill_md(skill_dir: str) -> str:
     path = Path(skill_dir) / "SKILL.md"
+    if not path.exists():
+        raise SkillValidationError(f"SKILL.md not found in {skill_dir}", path=skill_dir)
     return path.read_text()
