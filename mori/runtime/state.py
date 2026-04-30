@@ -30,6 +30,9 @@ class MoriState(MoriModel):
     # Memory
     memory_slice: MemorySlice | None = None
 
+    # Skills
+    active_skill_payload: Any | None = None
+
     # Counters
     step_count: int = 0
     total_input_tokens: int = 0

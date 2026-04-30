@@ -7,7 +7,9 @@ from typing import Any, Protocol, runtime_checkable
 
 from pydantic import Field
 
+from mori.budget.types import BudgetSlot
 from mori.types import (
+    DisclosureLevel,
     MemoryLayer,
     MoriModel,
     Phase,
@@ -110,6 +112,42 @@ class MemoryWriteEvent(MoriEvent):
     layer: MemoryLayer
     record_ids: list[str]
     records_written: int
+
+
+# ── Skills Events ────────────────────────────────────────────
+
+class SkillDiscoverEvent(MoriEvent):
+    event_type: str = "skill.discover"
+    task_preview: str
+    candidates_found: int
+    top_match_name: str | None = None
+    top_match_score: float | None = None
+    duration_ms: float
+
+
+class SkillLoadEvent(MoriEvent):
+    event_type: str = "skill.load"
+    skill_id: str
+    disclosure_level: DisclosureLevel
+    token_estimate: int
+    duration_ms: float
+
+
+# ── Budget Events ────────────────────────────────────────────
+
+class BudgetRebalanceEvent(MoriEvent):
+    event_type: str = "budget.rebalance"
+    phase: str
+    allocations: dict[BudgetSlot, int]
+    total_consumed: int
+    utilization: float
+
+
+class CompactionEvent(MoriEvent):
+    event_type: str = "budget.compaction"
+    stages_run: list[Any]
+    total_tokens_reclaimed: int
+    final_utilization: float
 
 
 # ── Trace Context ────────────────────────────────────────────
