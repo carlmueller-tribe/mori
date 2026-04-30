@@ -76,10 +76,22 @@ def test_registry_limit(skills_dir):
 
 
 def test_registry_caches_on_second_call(skills_dir):
+    import shutil
     reg = FilesystemRegistry(str(skills_dir))
     r1 = reg.search("q", limit=10)
+    shutil.rmtree(skills_dir / "beta")
     r2 = reg.search("q", limit=10)
     assert [m.name for m in r1] == [m.name for m in r2]
+
+
+def test_registry_empty_dir(tmp_path):
+    reg = FilesystemRegistry(str(tmp_path))
+    assert reg.search("q") == []
+
+
+def test_registry_nonexistent_root(tmp_path):
+    reg = FilesystemRegistry(str(tmp_path / "does-not-exist"))
+    assert reg.search("q") == []
 
 
 def test_composite_registry_merges(skills_dir, tmp_path):

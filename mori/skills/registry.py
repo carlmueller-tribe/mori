@@ -2,10 +2,16 @@
 from __future__ import annotations
 import logging
 from pathlib import Path
+from typing import Protocol, runtime_checkable
 from mori.skills.parser import parse_manifest
 from mori.skills.types import SkillManifest, SkillValidationError
 
 logger = logging.getLogger(__name__)
+
+
+@runtime_checkable
+class SkillRegistry(Protocol):
+    def search(self, query: str, limit: int = 10) -> list[SkillManifest]: ...
 
 
 class FilesystemRegistry:
@@ -16,6 +22,10 @@ class FilesystemRegistry:
 
     def _load(self) -> list[SkillManifest]:
         if self._cache is not None:
+            return self._cache
+        if not self._root.is_dir():
+            logger.warning("Skills root does not exist or is not a directory: %s", self._root)
+            self._cache = []
             return self._cache
         manifests: list[SkillManifest] = []
         for candidate in sorted(self._root.iterdir()):
@@ -38,14 +48,15 @@ class FilesystemRegistry:
 
 
 class CompositeRegistry:
-    def __init__(self, registries: list[FilesystemRegistry]) -> None:
+    def __init__(self, registries: list[SkillRegistry]) -> None:
         self._registries = registries
 
     def search(self, query: str, limit: int = 10) -> list[SkillManifest]:
         seen: set[str] = set()
         results: list[SkillManifest] = []
+        budget = limit * max(1, len(self._registries))
         for reg in self._registries:
-            for m in reg.search(query, limit=limit):
+            for m in reg.search(query, limit=budget):
                 if m.name not in seen:
                     seen.add(m.name)
                     results.append(m)
