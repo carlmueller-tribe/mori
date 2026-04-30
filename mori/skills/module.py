@@ -92,7 +92,9 @@ class SkillsModule:
     def bind(self, payload: SkillPayload, available_tools: list[ToolSpec]) -> BoundSkill:
         manifests = self._registry.search("", limit=100)
         manifest = next((m for m in manifests if m.name == payload.skill_id), None)
-        required = list(manifest.preconditions.get("tools_required", [])) if manifest else []
+        if manifest is None:
+            raise KeyError(f"Skill '{payload.skill_id}' not found in registry")
+        required = list(manifest.preconditions.get("tools_required", []))
         tool_map = {t.name: t for t in available_tools}
         resolved = {name: tool_map[name] for name in required if name in tool_map}
         unresolved = [name for name in required if name not in tool_map]

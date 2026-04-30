@@ -98,7 +98,7 @@ async def test_load_full_respects_max_tokens(skills_dir):
     reg = FilesystemRegistry(str(skills_dir))
     module = SkillsModule(registry=reg)
     payload = await module.load("bug-fix", "FULL", max_tokens=5)
-    assert payload.token_estimate <= 6
+    assert payload.token_estimate <= 5
     assert payload.disclosure_level == DisclosureLevel.FULL
 
 
