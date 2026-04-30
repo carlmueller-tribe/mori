@@ -43,7 +43,7 @@ class BoundSkill(MoriModel):
     payload: SkillPayload
     resolved_tools: dict[str, ToolSpec] = Field(default_factory=dict)
     unresolved: list[str] = Field(default_factory=list)
-    model_config = {"arbitrary_types_allowed": True, "frozen": False, "extra": "forbid"}
+    model_config = {"arbitrary_types_allowed": True}
 
 
 class SkillExecutionOutcome(MoriModel):
@@ -68,4 +68,5 @@ class SkillHealthReport(MoriModel):
 class SkillValidationError(Exception):
     def __init__(self, message: str, path: str = "") -> None:
         super().__init__(message)
+        self.message = message
         self.path = path

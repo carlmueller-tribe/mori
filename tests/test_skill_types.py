@@ -74,3 +74,28 @@ def test_skill_execution_outcome():
         timestamp=datetime.now(timezone.utc),
     )
     assert o.success is True
+
+
+def test_skill_validation_error_path():
+    err = SkillValidationError("missing field", path="/tmp/skill")
+    assert err.path == "/tmp/skill"
+    assert err.message == "missing field"
+
+
+def test_skill_health_report():
+    from datetime import datetime, timezone
+    report = SkillHealthReport(
+        skill_id="bug-fix", total_runs=10, success_rate=0.8,
+        avg_steps=3.5, common_failures=["timeout"],
+        last_used=datetime.now(timezone.utc), stale=False,
+    )
+    assert report.success_rate == 0.8
+    assert report.stale is False
+    assert "timeout" in report.common_failures
+
+
+def test_skill_manifest_defaults():
+    m = SkillManifest(name="test", version="1.0.0", description="desc")
+    assert m.skill_dir == ""
+    assert m.capabilities == []
+    assert m.scope == {}
