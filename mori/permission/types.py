@@ -97,5 +97,6 @@ class PermissionExplanation(MoriModel):
 
 
 class PermissionConfig(MoriModel):
+    rules: list[PermissionRule] = Field(default_factory=list)
     default_decision: PermissionDecision = PermissionDecision.DENY
     audit_all_checks: bool = True
