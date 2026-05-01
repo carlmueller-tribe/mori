@@ -56,14 +56,10 @@ class HookRegistry:
         try:
             if inspect.iscoroutinefunction(handler):
                 coro = handler(payload)
-                return await asyncio.wait_for(coro, timeout=self._config.hook_timeout_sec)
             else:
-                # Run sync handlers directly in the event loop thread (assumed fast).
-                # Wrap in a coroutine so we can apply wait_for for timeout support.
-                async def _sync_wrapper():
-                    return handler(payload)
-
-                return await asyncio.wait_for(_sync_wrapper(), timeout=self._config.hook_timeout_sec)
+                loop = asyncio.get_running_loop()
+                coro = loop.run_in_executor(None, handler, payload)
+            return await asyncio.wait_for(coro, timeout=self._config.hook_timeout_sec)
         except asyncio.TimeoutError:
             if self._config.log_hook_errors:
                 log.warning("hook.timeout", handler=getattr(handler, "__name__", "?"))

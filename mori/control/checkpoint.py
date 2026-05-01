@@ -1,6 +1,7 @@
 """Checkpoint store — protocol + InMemory / File / SQLite backends."""
 from __future__ import annotations
 
+import contextlib
 import secrets
 import sqlite3
 from datetime import datetime, timezone
@@ -107,18 +108,17 @@ class FileCheckpoints:
 class SQLiteCheckpoints:
     def __init__(self, path: str) -> None:
         self._path = path
-        conn = sqlite3.connect(path)
-        conn.execute("""
-            CREATE TABLE IF NOT EXISTS checkpoints (
-                checkpoint_id TEXT PRIMARY KEY,
-                thread_id TEXT NOT NULL,
-                state_json TEXT NOT NULL,
-                created_at TEXT NOT NULL
-            )
-        """)
-        conn.execute("CREATE INDEX IF NOT EXISTS idx_cp_thread ON checkpoints(thread_id)")
-        conn.commit()
-        conn.close()
+        with contextlib.closing(sqlite3.connect(path)) as conn:
+            conn.execute("""
+                CREATE TABLE IF NOT EXISTS checkpoints (
+                    checkpoint_id TEXT PRIMARY KEY,
+                    thread_id TEXT NOT NULL,
+                    state_json TEXT NOT NULL,
+                    created_at TEXT NOT NULL
+                )
+            """)
+            conn.execute("CREATE INDEX IF NOT EXISTS idx_cp_thread ON checkpoints(thread_id)")
+            conn.commit()
 
     def _row_to_checkpoint(self, row: tuple) -> Checkpoint:
         return Checkpoint(
@@ -128,44 +128,39 @@ class SQLiteCheckpoints:
 
     async def save(self, state) -> CheckpointId:
         cid = _new_cid()
-        conn = sqlite3.connect(self._path)
-        conn.execute(
-            "INSERT INTO checkpoints VALUES (?, ?, ?, ?)",
-            (cid, state.thread_id, state.model_dump_json(), datetime.now(timezone.utc).isoformat()),
-        )
-        conn.commit()
-        conn.close()
+        with contextlib.closing(sqlite3.connect(self._path)) as conn:
+            conn.execute(
+                "INSERT INTO checkpoints VALUES (?, ?, ?, ?)",
+                (cid, state.thread_id, state.model_dump_json(), datetime.now(timezone.utc).isoformat()),
+            )
+            conn.commit()
         return cid
 
     async def load_latest(self, thread_id: ThreadId) -> Checkpoint | None:
-        conn = sqlite3.connect(self._path)
-        row = conn.execute(
-            "SELECT checkpoint_id, thread_id, state_json, created_at FROM checkpoints "
-            "WHERE thread_id = ? ORDER BY created_at DESC LIMIT 1", (thread_id,)
-        ).fetchone()
-        conn.close()
+        with contextlib.closing(sqlite3.connect(self._path)) as conn:
+            row = conn.execute(
+                "SELECT checkpoint_id, thread_id, state_json, created_at FROM checkpoints "
+                "WHERE thread_id = ? ORDER BY created_at DESC LIMIT 1", (thread_id,)
+            ).fetchone()
         return self._row_to_checkpoint(row) if row else None
 
     async def load(self, checkpoint_id: CheckpointId) -> Checkpoint | None:
-        conn = sqlite3.connect(self._path)
-        row = conn.execute(
-            "SELECT checkpoint_id, thread_id, state_json, created_at FROM checkpoints "
-            "WHERE checkpoint_id = ?", (checkpoint_id,)
-        ).fetchone()
-        conn.close()
+        with contextlib.closing(sqlite3.connect(self._path)) as conn:
+            row = conn.execute(
+                "SELECT checkpoint_id, thread_id, state_json, created_at FROM checkpoints "
+                "WHERE checkpoint_id = ?", (checkpoint_id,)
+            ).fetchone()
         return self._row_to_checkpoint(row) if row else None
 
     async def list(self, thread_id: ThreadId) -> list[Checkpoint]:
-        conn = sqlite3.connect(self._path)
-        rows = conn.execute(
-            "SELECT checkpoint_id, thread_id, state_json, created_at FROM checkpoints "
-            "WHERE thread_id = ? ORDER BY created_at ASC", (thread_id,)
-        ).fetchall()
-        conn.close()
+        with contextlib.closing(sqlite3.connect(self._path)) as conn:
+            rows = conn.execute(
+                "SELECT checkpoint_id, thread_id, state_json, created_at FROM checkpoints "
+                "WHERE thread_id = ? ORDER BY created_at ASC", (thread_id,)
+            ).fetchall()
         return [self._row_to_checkpoint(r) for r in rows]
 
     async def delete(self, checkpoint_id: CheckpointId) -> None:
-        conn = sqlite3.connect(self._path)
-        conn.execute("DELETE FROM checkpoints WHERE checkpoint_id = ?", (checkpoint_id,))
-        conn.commit()
-        conn.close()
+        with contextlib.closing(sqlite3.connect(self._path)) as conn:
+            conn.execute("DELETE FROM checkpoints WHERE checkpoint_id = ?", (checkpoint_id,))
+            conn.commit()
