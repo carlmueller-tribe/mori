@@ -150,6 +150,18 @@ class CompactionEvent(MoriEvent):
     final_utilization: float
 
 
+# ── Permission Events ────────────────────────────────────────
+
+class PermissionCheckEvent(MoriEvent):
+    event_type: str = "permission.check"
+    identity_id: str
+    resource_id: str
+    permission: str       # "r", "w", or "x"
+    decision: str         # "allow", "deny", or "escalate"
+    rule_id: str | None = None
+    explanation: str = ""
+
+
 # ── Trace Context ────────────────────────────────────────────
 
 class SpanContext(MoriModel):
