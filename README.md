@@ -6,14 +6,18 @@ Mori is a Python library for building governed LLM agent systems. It provides a 
 
 ## Install
 
+Clone the repo and install in editable mode:
+
 ```bash
-pip install mori
+git clone https://github.com/carlmueller-tribe/mori.git
+cd mori
+pip install -e .
 ```
 
 With Anthropic support:
 
 ```bash
-pip install mori[anthropic]
+pip install -e ".[anthropic]"
 ```
 
 ## Quick Start

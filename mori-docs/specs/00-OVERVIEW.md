@@ -200,6 +200,7 @@ mori/
 | 11   | Integration Patterns   | Cross-module flows, builder API, startup           |
 | 12   | AIUC-1 Compliance      | Risk taxonomy, data guards, evidence exporter      |
 | 13   | Pi Patterns            | Tree sessions, compaction, AGENTS.md, steering, skills compat |
+| 14   | Resilience             | Temporal integration: durable execution, signals, phase activities (future) |
 
 ## 8. Implementation Sequence
 
