@@ -1,0 +1,23 @@
+name: Greptile Index
+
+on:
+  push:
+    branches: [main]
+
+jobs:
+  index:
+    name: Index repo with Greptile
+    runs-on: ubuntu-latest
+    steps:
+      - name: Submit repo for indexing
+        env:
+          GREPTILE_API_KEY: ${{ secrets.GREPTILE_API_KEY }}
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          REPO: ${{ github.repository }}
+        run: |
+          curl -s -X POST https://api.greptile.com/v2/repositories \
+            -H "Authorization: Bearer $GREPTILE_API_KEY" \
+            -H "X-GitHub-Token: $GITHUB_TOKEN" \
+            -H "Content-Type: application/json" \
+            -d "{\"remote\": \"github\", \"repository\": \"$REPO\", \"branch\": \"main\", \"reload\": true}" \
+            | python3 -c "import sys, json; d=json.load(sys.stdin); print('Indexed:', d.get('repository', d))"
