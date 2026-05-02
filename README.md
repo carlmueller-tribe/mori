@@ -1,8 +1,35 @@
-# Mori (森)
+<p align="center">
+  <img src="mori-docs/mori-icon.png" alt="Mori" width="360" />
+</p>
 
-The cognitive environment for LLM agents.
+<h1 align="center">Mori (森)</h1>
+<p align="center"><em>The cognitive environment for LLM agents.</em></p>
 
-Mori is a Python library for building governed LLM agent systems. It provides a lightweight native runtime, layered memory, reusable skill artifacts, a managed protocol registry, declarative permissions, context budget management, and vendor-neutral observability.
+---
+
+Mori is a Python library for building governed, auditable LLM agent systems. It provides a complete native runtime — not a workflow wrapper — with the layers that production agents need but most frameworks leave out: structured memory, reusable skill artifacts, declarative permissions, dynamic context budget management, and vendor-neutral observability with a full audit trail.
+
+Each agent is an independent tree. The forest shares structure.
+
+## Why Mori
+
+Most agent frameworks answer the question *how do I wire steps together*. Mori answers the harder questions: who approved this action, what did the model see when it decided, where does the compliance evidence live, and what happens when the context window runs out.
+
+Governance, audibility, and resource control are structural — not bolt-ons.
+
+## What's Inside
+
+| Module | What it does |
+|---|---|
+| **Runtime** | Lightweight async state machine: perceive → plan → validate → act → observe → evaluate → update |
+| **Memory** | Four-layer memory (working, episodic, semantic, procedural) with pluggable backends |
+| **Skills** | Reusable skill artifacts with progressive disclosure — agents discover and follow procedures |
+| **Protocols** | Native MCP client, CLI tool runner, A2A registry |
+| **Permissions** | Declarative policy engine with scope hierarchy and approval gates |
+| **Control** | Resource bounds, retry logic, and checkpoint save/restore |
+| **Observability** | Structured event stream with pluggable sinks (stdout, JSONL, OTLP) |
+| **Budget** | Dynamic context allocation and graduated compaction |
+| **Compliance** | AIUC-1 primitives: risk taxonomy, data guards, evidence exporter |
 
 ## Install
 
@@ -28,8 +55,25 @@ from mori import Mori
 agent = (
     Mori.builder()
     .model("anthropic", model="claude-sonnet-4-20250514")
-    .tool(add, description="Add two numbers")
+    .tool(read_file, description="Read a file")
+    .memory_backend("sqlite", path="./memory.db")
+    .skill_registry("./skills/")
+    .budget(total_context_tokens=200_000)
+    .sink("stdout")
     .build()
 )
-result = await agent.run("What is 3 + 5?")
+
+result = await agent.run("Fix the failing test in tests/test_auth.py")
 ```
+
+## Design Principles
+
+- **Own the runtime.** No external orchestration dependency. Simple, debuggable, fast.
+- **Treat frameworks as plugins.** LangGraph, CrewAI, and others can run inside Mori — Mori never depends on them.
+- **Governance by default.** Permissions, audit logging, and approval gates are structural components.
+- **Vendor-neutral.** Works with any LLM provider, any observability stack, any storage backend.
+- **Minimal sufficiency.** Load only what reduces the model's cognitive burden for the current step.
+
+## Status
+
+Active development. See [`mori-docs/specs/`](mori-docs/specs/) for the full specification index.
