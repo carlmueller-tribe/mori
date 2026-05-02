@@ -74,6 +74,21 @@ result = await agent.run("Fix the failing test in tests/test_auth.py")
 - **Vendor-neutral.** Works with any LLM provider, any observability stack, any storage backend.
 - **Minimal sufficiency.** Load only what reduces the model's cognitive burden for the current step.
 
+## Documentation
+
+Full architecture documentation lives in [`mori-docs/`](mori-docs/). To browse it locally:
+
+```bash
+pip install -e ".[docs]"
+mkdocs serve
+```
+
+Then open [http://127.0.0.1:8000](http://127.0.0.1:8000).
+
+The docs cover every module with 6-tier progressive disclosure (TL;DR → API surface → internals → annotated examples), a version history narrative from v0.1 through V1, and a roadmap for proposed modules.
+
+Raw specs: [`mori-docs/specs/`](mori-docs/specs/)
+
 ## Status
 
-Active development. See [`mori-docs/specs/`](mori-docs/specs/) for the full specification index.
+Under heavy active development. APIs may change without notice between versions.

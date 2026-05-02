@@ -18,3 +18,4 @@ venv/
 .env.*
 .worktrees/
 .superpowers/
+site/
