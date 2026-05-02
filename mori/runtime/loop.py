@@ -252,7 +252,7 @@ class AgentLoop:
                     run_id=state.run_id,
                     identity_id=self._identity.id,
                     resource_id=call.name,
-                    permission="x",
+                    permission=Permission.EXECUTE.value,
                     decision=perm_result.decision.value,
                     rule_id=(
                         perm_result.rule_applied.id
