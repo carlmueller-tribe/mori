@@ -5,7 +5,7 @@ import asyncio
 import concurrent.futures
 import fnmatch
 from pathlib import Path
-from typing import Any
+from typing import Any, Literal
 
 from mori.permission.types import (
     Condition,
@@ -183,7 +183,7 @@ class PermissionEngine:
 
                 resource_type_raw = resource_data.get("type", "*")
                 if resource_type_raw == "*":
-                    resource_type: ResourceType | str = "*"
+                    resource_type: ResourceType | Literal["*"] = "*"
                 else:
                     resource_type = ResourceType(resource_type_raw.lower())
 

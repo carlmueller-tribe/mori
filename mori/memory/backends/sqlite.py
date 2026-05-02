@@ -26,12 +26,12 @@ class SQLiteBackend:
         self._conn.execute("CREATE INDEX IF NOT EXISTS idx_layer ON memory_records(layer)")
         self._conn.commit()
 
-    def _to_row(self, r: MemoryRecord) -> tuple:
+    def _to_row(self, r: MemoryRecord) -> tuple[Any, ...]:
         emb = np.array(r.embedding, dtype=np.float32).tobytes() if r.embedding else None
         return (r.record_id, r.layer.value, r.content, json.dumps(r.metadata) if r.metadata else None,
             r.created_at.isoformat(), r.updated_at.isoformat(), r.ttl_seconds, r.provenance, r.confidence, emb)
 
-    def _from_row(self, row: tuple) -> MemoryRecord:
+    def _from_row(self, row: tuple[Any, ...]) -> MemoryRecord:
         emb = np.frombuffer(row[9], dtype=np.float32).tolist() if row[9] else []
         return MemoryRecord(record_id=MemoryRecordId(row[0]), layer=MemoryLayer(row[1]), content=row[2],
             metadata=json.loads(row[3]) if row[3] else {}, created_at=datetime.fromisoformat(row[4]),
@@ -77,7 +77,8 @@ class SQLiteBackend:
     async def search(self, embedding: list[float], layer: MemoryLayer | None = None,
         limit: int = 20, filters: MemoryFilters | None = None) -> list[tuple[MemoryRecord, float]]:
         assert self._conn
-        q, p = "SELECT * FROM memory_records WHERE embedding IS NOT NULL", []
+        q: str = "SELECT * FROM memory_records WHERE embedding IS NOT NULL"
+        p: list[Any] = []
         if layer: q += " AND layer=?"; p.append(layer.value)
         if filters:
             if filters.min_confidence is not None: q += " AND confidence>=?"; p.append(filters.min_confidence)
@@ -102,8 +103,8 @@ class SQLiteBackend:
     async def count(self, layer: MemoryLayer | None = None) -> int:
         assert self._conn
         if layer is None:
-            return self._conn.execute("SELECT COUNT(*) FROM memory_records").fetchone()[0]
-        return self._conn.execute("SELECT COUNT(*) FROM memory_records WHERE layer=?", (layer.value,)).fetchone()[0]
+            return int(self._conn.execute("SELECT COUNT(*) FROM memory_records").fetchone()[0])
+        return int(self._conn.execute("SELECT COUNT(*) FROM memory_records WHERE layer=?", (layer.value,)).fetchone()[0])
 
     async def close(self) -> None:
         if self._conn: self._conn.close(); self._conn = None

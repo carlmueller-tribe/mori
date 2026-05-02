@@ -1,11 +1,11 @@
 """Embedder protocol and implementations."""
 from __future__ import annotations
-from typing import Protocol, runtime_checkable
+from typing import Protocol, cast, runtime_checkable
 
 try:
     import voyageai
 except ImportError:
-    voyageai = None  # type: ignore[assignment]
+    voyageai = None
 
 @runtime_checkable
 class Embedder(Protocol):
@@ -26,7 +26,7 @@ class AnthropicEmbedder:
         if not texts:
             return []
         result = self._client.embed(texts, model=self._model)
-        return result.embeddings
+        return cast(list[list[float]], result.embeddings)
 
     @property
     def dimensions(self) -> int:

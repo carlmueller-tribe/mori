@@ -6,7 +6,10 @@ import secrets
 import sqlite3
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import Protocol, runtime_checkable
+from typing import TYPE_CHECKING, Any, Protocol, runtime_checkable
+
+if TYPE_CHECKING:
+    from mori.runtime.state import MoriState
 
 from mori.types import CheckpointId, MoriModel, ThreadId
 
@@ -17,7 +20,7 @@ class Checkpoint(MoriModel):
     state_json: str
     created_at: datetime
 
-    def restore(self):  # -> MoriState (avoid circular import)
+    def restore(self) -> "MoriState":
         from mori.runtime.state import MoriState
         return MoriState.model_validate_json(self.state_json)
 
@@ -28,7 +31,7 @@ def _new_cid() -> CheckpointId:
 
 @runtime_checkable
 class CheckpointStore(Protocol):
-    async def save(self, state) -> CheckpointId: ...
+    async def save(self, state: Any) -> CheckpointId: ...
     async def load_latest(self, thread_id: ThreadId) -> Checkpoint | None: ...
     async def load(self, checkpoint_id: CheckpointId) -> Checkpoint | None: ...
     async def list(self, thread_id: ThreadId) -> list[Checkpoint]: ...
@@ -40,7 +43,7 @@ class InMemoryCheckpoints:
         self._store: dict[CheckpointId, Checkpoint] = {}
         self._order: dict[ThreadId, list[CheckpointId]] = {}
 
-    async def save(self, state) -> CheckpointId:
+    async def save(self, state: Any) -> CheckpointId:
         cid = _new_cid()
         cp = Checkpoint(
             checkpoint_id=cid, thread_id=state.thread_id,
@@ -74,7 +77,7 @@ class FileCheckpoints:
     def _path(self, cid: CheckpointId) -> Path:
         return self._dir / f"{cid}.json"
 
-    async def save(self, state) -> CheckpointId:
+    async def save(self, state: Any) -> CheckpointId:
         cid = _new_cid()
         cp = Checkpoint(
             checkpoint_id=cid, thread_id=state.thread_id,
@@ -120,13 +123,13 @@ class SQLiteCheckpoints:
             conn.execute("CREATE INDEX IF NOT EXISTS idx_cp_thread ON checkpoints(thread_id)")
             conn.commit()
 
-    def _row_to_checkpoint(self, row: tuple) -> Checkpoint:
+    def _row_to_checkpoint(self, row: tuple[Any, ...]) -> Checkpoint:
         return Checkpoint(
             checkpoint_id=CheckpointId(row[0]), thread_id=ThreadId(row[1]),
             state_json=row[2], created_at=datetime.fromisoformat(row[3]),
         )
 
-    async def save(self, state) -> CheckpointId:
+    async def save(self, state: Any) -> CheckpointId:
         cid = _new_cid()
         with contextlib.closing(sqlite3.connect(self._path)) as conn:
             conn.execute(

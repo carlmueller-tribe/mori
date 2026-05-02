@@ -5,7 +5,7 @@ from __future__ import annotations
 import secrets
 import time
 from datetime import datetime, timezone
-from typing import Any, TYPE_CHECKING
+from typing import Any, TYPE_CHECKING, cast
 
 from mori.budget.types import BudgetSlot
 from mori.model.base import ModelAdapter
@@ -21,6 +21,7 @@ from mori.types import (
     StepId,
     StepOutcome,
     ThreadId,
+    ToolSource,
 )
 
 if TYPE_CHECKING:
@@ -272,8 +273,8 @@ class AgentLoop:
                     await self._hooks.dispatch_after("permission.check.after", perm_result)
 
                 if perm_result.decision == PermissionDecision.DENY:
-                    content = f"Permission denied: not authorized to invoke '{call.name}'"
-                    state.messages.append(Message(role="tool", content=content, tool_call_id=call.id))
+                    deny_content = f"Permission denied: not authorized to invoke '{call.name}'"
+                    state.messages.append(Message(role="tool", content=deny_content, tool_call_id=call.id))
                     state.total_tool_calls += 1
                     continue
 
@@ -284,7 +285,7 @@ class AgentLoop:
                     return
 
             spec = self._tools.get_spec(call.name)
-            source = spec.source if spec else "native"
+            source: ToolSource = spec.source if spec else ToolSource.NATIVE
 
             # Before hook fires first so ToolInvokeEvent records actual arguments
             if self._hooks:
@@ -309,7 +310,7 @@ class AgentLoop:
                 result_preview=str(result.content)[:200] if result.content else None,
             ))
 
-            content = result.content if result.success else f"ERROR: {result.error}"
+            content: str | list[dict[str, Any]] = result.content if result.success else f"ERROR: {result.error}"
             state.messages.append(Message(role="tool", content=content, tool_call_id=call.id))
             state.total_tool_calls += 1
 
@@ -415,7 +416,9 @@ class AgentLoop:
             await self._phase_act(state)
 
             # Check if _phase_act caused a PAUSED state (e.g. permission ESCALATE)
-            if state.status == RunStatus.PAUSED:
+            # cast needed: mypy narrows state.status to RUNNING in while-condition, but
+            # _phase_act can mutate it to PAUSED.
+            if cast(RunStatus, state.status) == RunStatus.PAUSED:
                 break
 
             outcome = self._phase_evaluate(state)

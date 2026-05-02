@@ -26,12 +26,12 @@ class MoriBuilder:
         self._mcp_servers: list[dict[str, Any]] = []
         self._sinks: list[Any] = []
         self._config: dict[str, Any] = {}
-        self._memory_config: dict | None = None
+        self._memory_config: dict[str, Any] | None = None
         self._skill_registry_path: str | None = None
-        self._budget_config: dict | None = None
+        self._budget_config: dict[str, Any] | None = None
         self._identity: Any | None = None
         self._policy_file: str | None = None
-        self._checkpointer_config: dict | None = None
+        self._checkpointer_config: dict[str, Any] | None = None
         self._hook_handlers: list[tuple[str, Any, int]] = []
 
     def model(
@@ -178,13 +178,14 @@ class MoriBuilder:
         if self._memory_config:
             from mori.memory.module import MemoryModule
             from mori.memory.backends.inmemory import InMemoryBackend
+            from mori.memory.backends.sqlite import SQLiteBackend
             from mori.types import MemoryConfig
             backend_type = self._memory_config["type"]
+            backend: InMemoryBackend | SQLiteBackend
             if backend_type == "inmemory":
                 backend = InMemoryBackend()
             elif backend_type == "sqlite":
-                from mori.memory.backends.sqlite import SQLiteBackend
-                backend = SQLiteBackend(path=self._memory_config["path"])
+                sqlite_backend = SQLiteBackend(path=self._memory_config["path"])
                 # Note: SQLiteBackend needs initialize() — call it synchronously via sqlite3
                 import sqlite3
                 conn = sqlite3.connect(self._memory_config["path"])
@@ -196,7 +197,8 @@ class MoriBuilder:
                 conn.commit()
                 conn.close()
                 # Reopen via backend
-                backend._conn = sqlite3.connect(self._memory_config["path"])
+                sqlite_backend._conn = sqlite3.connect(self._memory_config["path"])
+                backend = sqlite_backend
             else:
                 raise ValueError(f"Unknown memory backend: {backend_type}")
             embedder = None
@@ -231,11 +233,11 @@ class MoriBuilder:
             permission_engine = PermissionEngine.from_yaml(self._policy_file)
 
         # 8. Checkpointer
-        checkpointer = None
+        from mori.control.checkpoint import (
+            FileCheckpoints, InMemoryCheckpoints, SQLiteCheckpoints,
+        )
+        checkpointer: InMemoryCheckpoints | FileCheckpoints | SQLiteCheckpoints | None = None
         if self._checkpointer_config:
-            from mori.control.checkpoint import (
-                FileCheckpoints, InMemoryCheckpoints, SQLiteCheckpoints,
-            )
             ctype = self._checkpointer_config["type"]
             if ctype == "inmemory":
                 checkpointer = InMemoryCheckpoints()

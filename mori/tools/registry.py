@@ -6,7 +6,7 @@ import asyncio
 import inspect
 import time
 from datetime import datetime, timezone
-from typing import Any, Callable
+from typing import Any, Callable, Literal, cast
 
 from mori.protocols.cli.runner import CLIRunner, CLIToolConfig
 from mori.protocols.mcp.client import MCPClient
@@ -106,7 +106,7 @@ class ToolRegistry:
         command: str,
         description: str,
         args_format: str = "flags",
-        args_schema: dict | None = None,
+        args_schema: dict[str, Any] | None = None,
         shell: bool = False,
         cwd: str | None = None,
         env: dict[str, str] | None = None,
@@ -117,7 +117,7 @@ class ToolRegistry:
         tool_id = ToolId(f"cli:{name}")
         config = CLIToolConfig(
             command=command,
-            args_format=args_format,
+            args_format=cast(Literal["positional", "flags", "subcommand", "raw"], args_format),
             shell=shell,
             cwd=cwd,
             env=env,

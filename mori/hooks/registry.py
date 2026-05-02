@@ -6,7 +6,7 @@ import inspect
 import secrets
 import structlog
 from datetime import datetime, timezone
-from typing import Any, Callable
+from typing import Any, Awaitable, Callable, Union
 
 from mori.hooks.types import HookConfig, HookHandler, HookRegistration
 
@@ -32,9 +32,11 @@ class HookRegistry:
         hook_id = f"hook_{secrets.token_hex(6)}"
         hooks.append((priority, hook_id, handler))
         hooks.sort(key=lambda t: t[0])
+        raw_name = name or getattr(handler, "__name__", None) or repr(handler)
+        handler_name: str = raw_name if isinstance(raw_name, str) else repr(raw_name)
         self._registrations[hook_id] = HookRegistration(
             hook_id=hook_id, event_name=event_name,
-            handler_name=name or getattr(handler, "__name__", repr(handler)),
+            handler_name=handler_name,
             priority=priority, registered_at=datetime.now(timezone.utc),
         )
         return hook_id
@@ -46,7 +48,7 @@ class HookRegistry:
         self._hooks[reg.event_name] = [t for t in self._hooks.get(reg.event_name, []) if t[1] != hook_id]
         return True
 
-    def hook(self, event_name: str, priority: int = 100) -> Callable:
+    def hook(self, event_name: str, priority: int = 100) -> Callable[[HookHandler], HookHandler]:
         def decorator(fn: HookHandler) -> HookHandler:
             self.register(event_name, fn, priority=priority, name=fn.__name__)
             return fn
@@ -55,11 +57,11 @@ class HookRegistry:
     async def _call(self, handler: HookHandler, payload: Any) -> Any:
         try:
             if inspect.iscoroutinefunction(handler):
-                coro = handler(payload)
+                awaitable: Awaitable[Any] = handler(payload)
             else:
                 loop = asyncio.get_running_loop()
-                coro = loop.run_in_executor(None, handler, payload)
-            return await asyncio.wait_for(coro, timeout=self._config.hook_timeout_sec)
+                awaitable = loop.run_in_executor(None, handler, payload)
+            return await asyncio.wait_for(awaitable, timeout=self._config.hook_timeout_sec)
         except asyncio.TimeoutError:
             if self._config.log_hook_errors:
                 log.warning("hook.timeout", handler=getattr(handler, "__name__", "?"))

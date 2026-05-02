@@ -113,7 +113,10 @@ class MemoryModule:
 
     async def stats(self) -> MemoryStats:
         total = await self._backend.count()
-        per_layer, tokens, oldest, newest = {}, {}, {}, {}
+        per_layer: dict[MemoryLayer, int] = {}
+        tokens: dict[MemoryLayer, int] = {}
+        oldest: dict[MemoryLayer, float | None] = {}
+        newest: dict[MemoryLayer, float | None] = {}
         now = datetime.now(timezone.utc)
         for layer in MemoryLayer:
             count = await self._backend.count(layer)
