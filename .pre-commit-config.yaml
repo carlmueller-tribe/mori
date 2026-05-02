@@ -1,0 +1,63 @@
+default_stages:
+  - pre-commit
+
+repos:
+  - repo: https://github.com/pre-commit/pre-commit-hooks
+    rev: v5.0.0
+    hooks:
+      - id: trailing-whitespace
+        stages: [pre-commit, pre-push]
+      - id: end-of-file-fixer
+      - id: check-yaml
+        exclude: mkdocs.yml
+      - id: check-json
+      - id: check-toml
+      - id: check-merge-conflict
+      - id: check-added-large-files
+        args: [--maxkb=500]
+      - id: detect-private-key
+
+  - repo: https://github.com/astral-sh/ruff-pre-commit
+    rev: v0.8.6
+    hooks:
+      - id: ruff
+        name: Lint with ruff
+        args: [--fix]
+      - id: ruff-format
+        name: Format with ruff
+
+  - repo: local
+    hooks:
+      - id: mypy
+        name: Type check with mypy
+        entry: uv run mypy
+        language: system
+        types: [python]
+        pass_filenames: false
+        args: [mori/]
+        stages: [pre-commit]
+
+  - repo: https://github.com/codespell-project/codespell
+    rev: v2.4.1
+    hooks:
+      - id: codespell
+        name: Check spelling
+        additional_dependencies: [tomli]
+        args: [--ignore-words-list=te]
+
+  - repo: https://github.com/compilerla/conventional-pre-commit
+    rev: v4.2.0
+    hooks:
+      - id: conventional-pre-commit
+        name: Check commit message format
+        stages: [commit-msg]
+        args: [feat, fix, docs, refactor, test, chore, perf, ci, build]
+
+  - repo: local
+    hooks:
+      - id: trivy
+        name: Scan for vulnerabilities
+        entry: trivy fs --exit-code 1 --severity HIGH,CRITICAL --ignore-unfixed .
+        language: system
+        pass_filenames: false
+        stages: [pre-push]

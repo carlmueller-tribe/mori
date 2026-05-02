@@ -1,0 +1,35 @@
+[tools]
+python = "3.11"
+trivy = "0.69.3"
+ripgrep = "14.1.1"
+
+[env]
+PROJECT_NAME = "mori"
+
+[tasks.test]
+run = "uv run pytest"
+description = "Run test suite"
+
+[tasks.lint]
+run = "uv run ruff check mori/ tests/"
+description = "Lint with ruff"
+
+[tasks.fmt]
+run = "uv run ruff format mori/ tests/"
+description = "Format with ruff"
+
+[tasks.typecheck]
+run = "uv run mypy mori/"
+description = "Type check with mypy"
+
+[tasks.check]
+depends = ["lint", "typecheck", "test"]
+description = "Run all checks (lint, typecheck, test)"
+
+[tasks."trivy:scan"]
+run = "trivy fs ."
+description = "Scan dependencies for vulnerabilities"
+
+[tasks."trivy:update-db"]
+run = "trivy image --download-db-only"
+description = "Update Trivy vulnerability database"

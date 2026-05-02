@@ -1,0 +1,16 @@
+version: "1.3"
+
+reviews:
+  enabled: true
+
+rules:
+  - "All public classes and methods must have a one-line docstring."
+  - "New modules must conform to the protocol or abstract base defined in the module's base.py."
+  - "Optional dependencies must use the try/except import guard pattern from mori/model/anthropic.py — raise ImportError with install instructions at __init__, not at import time."
+  - "Async methods that acquire resources (connections, pools) must have a corresponding close() or cleanup path."
+  - "Type annotations are required on all public method signatures — no implicit Any."
+  - "No bare except: clauses. Catch specific exception types."
+  - "Tests must cover: happy path, each error condition named in the spec, and ImportError for optional-dep classes."
+  - "Do not add features or methods not specified in the relevant spec document (mori-docs/specs/)."
+  - "Do not log or expose sensitive data (API keys, tokens, PII) in any output or error message."
+  - "Keep line length at or below 100 characters (matches ruff config)."
