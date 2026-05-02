@@ -233,9 +233,46 @@ class AgentLoop:
         if not last_msg.tool_calls:
             return
 
-        from mori.observability.events import ToolInvokeEvent, ToolResultEvent
+        from mori.observability.events import PermissionCheckEvent, ToolInvokeEvent, ToolResultEvent
 
         for call in last_msg.tool_calls:
+            # Permission check (if engine and identity configured)
+            if self._permission and self._identity:
+                from mori.permission.types import Permission, Resource, ResourceType
+                from mori.types import PermissionDecision
+
+                perm_result = await self._permission.check(
+                    self._identity,
+                    Resource(type=ResourceType.TOOL, id=call.name),
+                    Permission.EXECUTE,
+                )
+
+                await self._emit(PermissionCheckEvent(
+                    event_id=f"evt_{_uid()}", timestamp=datetime.now(timezone.utc),
+                    run_id=state.run_id,
+                    identity_id=self._identity.id,
+                    resource_id=call.name,
+                    permission="x",
+                    decision=perm_result.decision.value,
+                    rule_id=(
+                        perm_result.rule_applied.id
+                        if perm_result.rule_applied else None
+                    ),
+                    explanation=perm_result.explanation,
+                ))
+
+                if perm_result.decision == PermissionDecision.DENY:
+                    content = f"Permission denied: not authorized to invoke '{call.name}'"
+                    state.messages.append(Message(role="tool", content=content, tool_call_id=call.id))
+                    state.total_tool_calls += 1
+                    continue
+
+                if perm_result.decision == PermissionDecision.ESCALATE:
+                    state.status = RunStatus.PAUSED
+                    state.paused_reason = f"ESCALATE: '{call.name}' requires approval"
+                    state.paused_tool_call = call
+                    return
+
             spec = self._tools.get_spec(call.name)
             source = spec.source if spec else "native"
 
