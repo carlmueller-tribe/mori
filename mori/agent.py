@@ -223,15 +223,12 @@ class MoriBuilder:
             from mori.budget.types import BudgetConfig
             budget_manager = BudgetManager(BudgetConfig(**self._budget_config))
 
-        # 7. Permission engine
+        # 7. Permission engine — only created when a policy file is provided
+        # (.identity() alone is not enough; without rules, default_decision=DENY blocks everything)
         permission_engine = None
-        if self._policy_file or self._identity:
+        if self._policy_file:
             from mori.permission.engine import PermissionEngine
-            from mori.permission.types import PermissionConfig
-            if self._policy_file:
-                permission_engine = PermissionEngine.from_yaml(self._policy_file)
-            else:
-                permission_engine = PermissionEngine(config=PermissionConfig())
+            permission_engine = PermissionEngine.from_yaml(self._policy_file)
 
         # 8. Checkpointer
         checkpointer = None
