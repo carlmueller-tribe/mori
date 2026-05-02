@@ -223,7 +223,11 @@ class AgentLoop:
 
     async def _phase_plan(self, state: MoriState) -> None:
         request = self._assemble_request(state)
+        if self._hooks:
+            request = await self._hooks.dispatch_before("model.request.before", request)
         response = await self._model.invoke(request)
+        if self._hooks:
+            await self._hooks.dispatch_after("model.response.after", response)
         state.messages.append(response.message)
         state.total_input_tokens += response.usage.input_tokens
         state.total_output_tokens += response.usage.output_tokens
@@ -261,6 +265,9 @@ class AgentLoop:
                     explanation=perm_result.explanation,
                 ))
 
+                if self._hooks:
+                    await self._hooks.dispatch_after("permission.check.after", perm_result)
+
                 if perm_result.decision == PermissionDecision.DENY:
                     content = f"Permission denied: not authorized to invoke '{call.name}'"
                     state.messages.append(Message(role="tool", content=content, tool_call_id=call.id))
@@ -282,7 +289,15 @@ class AgentLoop:
                 arguments=call.arguments,
             ))
 
+            # Before hook (can modify ToolCall)
+            if self._hooks:
+                call = await self._hooks.dispatch_before("tool.invoke.before", call)
+
             result = await self._tools.invoke(call.name, call.arguments)
+
+            # After hook (observe ToolResult)
+            if self._hooks:
+                await self._hooks.dispatch_after("tool.invoke.after", result)
 
             await self._emit(ToolResultEvent(
                 event_id=f"evt_{_uid()}", timestamp=datetime.now(timezone.utc),
@@ -361,6 +376,8 @@ class AgentLoop:
             run_id=state.run_id, task=state.task,
             config={"max_steps": self._control._config.max_steps},
         ))
+        if self._hooks:
+            await self._hooks.dispatch_after("run.start", {"task": state.task, "run_id": state.run_id})
 
         while state.status == RunStatus.RUNNING:
             state.step_count += 1
@@ -428,6 +445,8 @@ class AgentLoop:
             total_input_tokens=state.total_input_tokens, total_output_tokens=state.total_output_tokens,
             duration_ms=elapsed_ms,
         ))
+        if self._hooks:
+            await self._hooks.dispatch_after("run.end", {"status": state.status, "run_id": state.run_id})
 
         # Write episodic summary (memory) — skip if PAUSED
         if self._memory and state.status != RunStatus.PAUSED:
