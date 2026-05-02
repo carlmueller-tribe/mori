@@ -7,7 +7,7 @@ from typing import Any, AsyncIterator
 try:
     import anthropic
 except ImportError:
-    anthropic = None  # type: ignore[assignment]
+    anthropic = None
 
 from mori.model.base import ModelAdapter, StreamChunk
 from mori.types import (

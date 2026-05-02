@@ -1,6 +1,6 @@
 """BudgetManager — per-slot token allocation and compaction orchestration."""
 from __future__ import annotations
-from typing import Any
+from typing import Any, cast
 from mori.budget.types import (
     BudgetConfig, BudgetSlot, CompactionModules, CompactionReport,
     CompactionStage, ConsumeResult, RebalanceHints, SlotReport,
@@ -259,7 +259,7 @@ class BudgetManager:
         summary_payload = await modules.skills.load(
             payload.skill_id, "SUMMARY", max_tokens=skill_budget
         )
-        reclaimed = max(0, payload.token_estimate - summary_payload.token_estimate)
+        reclaimed = cast(int, max(0, payload.token_estimate - summary_payload.token_estimate))
         state.active_skill_payload = summary_payload
         for i, msg in enumerate(state.messages):
             if msg.role == "system" and "[Skill Context]" in (
@@ -299,7 +299,7 @@ class BudgetManager:
                 else:
                     state.messages.pop(i)
                 break
-        reclaimed = max(0, old_tokens - new_slice.total_tokens)
+        reclaimed = cast(int, max(0, old_tokens - new_slice.total_tokens))
         if reclaimed:
             self.release(BudgetSlot.MEMORY, reclaimed)
         return reclaimed

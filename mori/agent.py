@@ -26,9 +26,13 @@ class MoriBuilder:
         self._mcp_servers: list[dict[str, Any]] = []
         self._sinks: list[Any] = []
         self._config: dict[str, Any] = {}
-        self._memory_config: dict | None = None
+        self._memory_config: dict[str, Any] | None = None
         self._skill_registry_path: str | None = None
-        self._budget_config: dict | None = None
+        self._budget_config: dict[str, Any] | None = None
+        self._identity: Any | None = None
+        self._policy_file: str | None = None
+        self._checkpointer_config: dict[str, Any] | None = None
+        self._hook_handlers: list[tuple[str, Any, int]] = []
 
     def model(
         self,
@@ -129,6 +133,22 @@ class MoriBuilder:
         }
         return self
 
+    def identity(self, identity: Any) -> MoriBuilder:
+        self._identity = identity
+        return self
+
+    def policy_file(self, path: str) -> MoriBuilder:
+        self._policy_file = path
+        return self
+
+    def checkpointer(self, backend_type: str, **kwargs: Any) -> MoriBuilder:
+        self._checkpointer_config = {"type": backend_type, **kwargs}
+        return self
+
+    def hook(self, event_name: str, handler: Any, priority: int = 100) -> MoriBuilder:
+        self._hook_handlers.append((event_name, handler, priority))
+        return self
+
     def config(self, **kwargs: Any) -> MoriBuilder:
         self._config.update(kwargs)
         return self
@@ -158,13 +178,14 @@ class MoriBuilder:
         if self._memory_config:
             from mori.memory.module import MemoryModule
             from mori.memory.backends.inmemory import InMemoryBackend
+            from mori.memory.backends.sqlite import SQLiteBackend
             from mori.types import MemoryConfig
             backend_type = self._memory_config["type"]
+            backend: InMemoryBackend | SQLiteBackend
             if backend_type == "inmemory":
                 backend = InMemoryBackend()
             elif backend_type == "sqlite":
-                from mori.memory.backends.sqlite import SQLiteBackend
-                backend = SQLiteBackend(path=self._memory_config["path"])
+                sqlite_backend = SQLiteBackend(path=self._memory_config["path"])
                 # Note: SQLiteBackend needs initialize() — call it synchronously via sqlite3
                 import sqlite3
                 conn = sqlite3.connect(self._memory_config["path"])
@@ -176,7 +197,8 @@ class MoriBuilder:
                 conn.commit()
                 conn.close()
                 # Reopen via backend
-                backend._conn = sqlite3.connect(self._memory_config["path"])
+                sqlite_backend._conn = sqlite3.connect(self._memory_config["path"])
+                backend = sqlite_backend
             else:
                 raise ValueError(f"Unknown memory backend: {backend_type}")
             embedder = None
@@ -203,14 +225,53 @@ class MoriBuilder:
             from mori.budget.types import BudgetConfig
             budget_manager = BudgetManager(BudgetConfig(**self._budget_config))
 
-        # 7. Agent loop
-        loop = AgentLoop(model=self._model_adapter, tools=registry, observability=obs,
-                         control=control, memory=memory_module,
-                         skills=skills_module, budget=budget_manager)
+        # 7. Permission engine — only created when a policy file is provided
+        # (.identity() alone is not enough; without rules, default_decision=DENY blocks everything)
+        permission_engine = None
+        if self._policy_file:
+            from mori.permission.engine import PermissionEngine
+            permission_engine = PermissionEngine.from_yaml(self._policy_file)
 
-        return Mori(loop=loop, tools=registry, observability=obs,
-                    mcp_configs=self._mcp_servers, memory=memory_module,
-                    skills=skills_module, budget=budget_manager)
+        # 8. Checkpointer
+        from mori.control.checkpoint import (
+            FileCheckpoints, InMemoryCheckpoints, SQLiteCheckpoints,
+        )
+        checkpointer: InMemoryCheckpoints | FileCheckpoints | SQLiteCheckpoints | None = None
+        if self._checkpointer_config:
+            ctype = self._checkpointer_config["type"]
+            if ctype == "inmemory":
+                checkpointer = InMemoryCheckpoints()
+            elif ctype == "file":
+                checkpointer = FileCheckpoints(directory=self._checkpointer_config["directory"])
+            elif ctype == "sqlite":
+                checkpointer = SQLiteCheckpoints(path=self._checkpointer_config["path"])
+            else:
+                raise ValueError(f"Unknown checkpointer type: {ctype}")
+
+        # 9. Hooks
+        hook_registry = None
+        if self._hook_handlers:
+            from mori.hooks.registry import HookRegistry
+            hook_registry = HookRegistry()
+            for event_name, handler, priority in self._hook_handlers:
+                hook_registry.register(event_name, handler, priority=priority)
+
+        # 10. Agent loop
+        loop = AgentLoop(
+            model=self._model_adapter, tools=registry, observability=obs,
+            control=control, memory=memory_module,
+            skills=skills_module, budget=budget_manager,
+            checkpointer=checkpointer, permission=permission_engine,
+            identity=self._identity, hooks=hook_registry,
+        )
+
+        return Mori(
+            loop=loop, tools=registry, observability=obs,
+            mcp_configs=self._mcp_servers, memory=memory_module,
+            skills=skills_module, budget=budget_manager,
+            identity=self._identity, permission=permission_engine,
+            checkpointer=checkpointer, hooks=hook_registry,
+        )
 
 
 class Mori:
@@ -225,6 +286,10 @@ class Mori:
         memory: Any = None,
         skills: Any = None,
         budget: Any = None,
+        identity: Any = None,
+        permission: Any = None,
+        checkpointer: Any = None,
+        hooks: Any = None,
     ) -> None:
         self._loop = loop
         self._tools = tools
@@ -234,6 +299,10 @@ class Mori:
         self._memory = memory
         self._skills = skills
         self._budget = budget
+        self._identity = identity
+        self._permission = permission
+        self._checkpointer = checkpointer
+        self._hooks = hooks
 
     @staticmethod
     def builder() -> MoriBuilder:
@@ -269,6 +338,29 @@ class Mori:
     @property
     def budget(self) -> Any:
         return self._budget
+
+    @property
+    def identity(self) -> Any:
+        return self._identity
+
+    @property
+    def permission(self) -> Any:
+        return self._permission
+
+    @property
+    def checkpointer(self) -> Any:
+        return self._checkpointer
+
+    @property
+    def hooks(self) -> Any:
+        return self._hooks
+
+    async def resume(
+        self,
+        thread_id: str,
+        input: dict[str, Any] | None = None,
+    ) -> RunResult:
+        return await self._loop.resume(ThreadId(thread_id), input or {})
 
     async def close(self) -> None:
         if self._memory:

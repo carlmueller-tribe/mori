@@ -87,4 +87,5 @@ class MCPClient:
         data = response.json()
         if "error" in data:
             raise ServerUnavailable(f"MCP error: {data['error'].get('message', 'unknown')}", details=data["error"])
-        return data.get("result", {})
+        result: dict[str, Any] = data.get("result", {})
+        return result

@@ -14,6 +14,7 @@ from mori.types import (
     RunId,
     RunStatus,
     ThreadId,
+    ToolCall,
 )
 
 
@@ -32,6 +33,10 @@ class MoriState(MoriModel):
 
     # Skills
     active_skill_payload: Any | None = None
+
+    # Pause context (set when status == RunStatus.PAUSED after ESCALATE decision)
+    paused_reason: str | None = None
+    paused_tool_call: ToolCall | None = None
 
     # Counters
     step_count: int = 0
