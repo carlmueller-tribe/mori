@@ -283,15 +283,15 @@ class AgentLoop:
             spec = self._tools.get_spec(call.name)
             source = spec.source if spec else "native"
 
+            # Before hook fires first so ToolInvokeEvent records actual arguments
+            if self._hooks:
+                call = await self._hooks.dispatch_before("tool.invoke.before", call)
+
             await self._emit(ToolInvokeEvent(
                 event_id=f"evt_{_uid()}", timestamp=datetime.now(timezone.utc),
                 run_id=state.run_id, tool_name=call.name, source=source,
                 arguments=call.arguments,
             ))
-
-            # Before hook (can modify ToolCall)
-            if self._hooks:
-                call = await self._hooks.dispatch_before("tool.invoke.before", call)
 
             result = await self._tools.invoke(call.name, call.arguments)
 
