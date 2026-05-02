@@ -1,6 +1,8 @@
 site_name: Mori
 site_description: The cognitive environment for LLM agents
 docs_dir: mori-docs
+exclude_docs: |
+  README.md
 theme:
   name: material
   features:
