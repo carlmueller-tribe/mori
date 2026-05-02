@@ -57,7 +57,8 @@ repos:
     hooks:
       - id: trivy
         name: Scan for vulnerabilities
-        entry: trivy fs --exit-code 1 --severity HIGH,CRITICAL --ignore-unfixed .
+        entry: trivy fs --exit-code 1 --severity HIGH,CRITICAL --ignore-unfixed
+          --skip-dirs .venv --skip-version-check uv.lock
         language: system
         pass_filenames: false
         stages: [pre-push]

@@ -16,10 +16,17 @@ mise install             # install pinned tool versions (Python 3.11, trivy, rip
 ### Core checks
 
 ```bash
+mise run check                             # lint + typecheck + tests + trivy (one command)
+```
+
+Or individually:
+
+```bash
 uv run ruff check mori/ tests/ examples/   # lint
 uv run ruff format mori/ tests/ examples/  # format
 uv run mypy mori/                          # strict type check — 0 errors required
 uv run pytest                              # full test suite
+mise run trivy:scan                        # HIGH/CRITICAL vuln scan against uv.lock
 pre-commit run --all-files                 # all pre-commit hooks
 ```
 
@@ -48,12 +55,10 @@ cd .worktrees/<short-name>
 ### 2. Implement, then validate
 
 ```bash
-# run checks — repeat until all pass
-uv run ruff check mori/ tests/ examples/ --fix
-uv run ruff format mori/ tests/ examples/
-uv run mypy mori/
-uv run pytest
-pre-commit run --all-files
+# run all checks — repeat until all pass
+mise run check                                    # lint + typecheck + tests + trivy
+uv run ruff check mori/ tests/ examples/ --fix   # auto-fix ruff violations if needed
+pre-commit run --all-files                        # full hook suite
 ```
 
 **STOP on any failure** — fix the root cause before proceeding. Never use `--no-verify`.
