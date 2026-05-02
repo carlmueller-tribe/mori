@@ -5,6 +5,8 @@ exclude_docs: |
   README.md
 theme:
   name: material
+  icon:
+    logo: fontawesome/solid/tree
   features:
     - navigation.tabs
     - navigation.sections
