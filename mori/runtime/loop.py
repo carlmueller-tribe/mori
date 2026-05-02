@@ -296,6 +296,10 @@ class AgentLoop:
         if cp is None:
             raise ValueError(f"No checkpoint found for thread {thread_id}")
         state = cp.restore()
+        if state.status != RunStatus.PAUSED:
+            raise ValueError(
+                f"Cannot resume thread {thread_id}: checkpoint has status '{state.status.value}', expected 'paused'"
+            )
         approved = input.get("approved", False)
         msg = f"[Resume] {'Approved' if approved else 'Rejected'}. Details: {input}"
         state.messages.append(Message(role="user", content=msg))
@@ -388,7 +392,7 @@ class AgentLoop:
             duration_ms=elapsed_ms,
         ))
 
-        # Write episodic summary — skip if PAUSED
+        # Write episodic summary (memory) — skip if PAUSED
         if self._memory and state.status != RunStatus.PAUSED:
             from mori.observability.events import MemoryWriteEvent
             from mori.types import MemoryRecord, MemoryRecordId, MemoryLayer
@@ -415,9 +419,6 @@ class AgentLoop:
                 run_id=state.run_id, layer=MemoryLayer.EPISODIC,
                 record_ids=[str(r) for r in receipt.record_ids], records_written=1,
             ))
-            if self._obs:
-                await self._obs.flush()
-            return run_result
 
         if self._obs:
             await self._obs.flush()
