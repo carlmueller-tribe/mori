@@ -26,6 +26,34 @@ gt submit
 
 `.worktrees/` is gitignored. Branch name comes from `gt create` output — always use `gt log` if unsure.
 
+### Stacking strategy
+
+A Linear ticket maps to a Graphite **stack** — multiple branches, each a focused layer of the implementation:
+
+```
+main
+ └── feat/mori-42-postgres-backend       ← data model + migrations
+      └── feat/mori-42-postgres-search   ← search + retrieval
+           └── feat/mori-42-postgres-tests ← integration tests
+```
+
+**Default rule**: each superpowers task (implementation step, test step, etc.) is its own branch in the stack.
+
+```bash
+# Stack a new branch on top of the current one
+gt create -m "feat(memory): add pgvector search (MORI-42)"
+# → Graphite stacks it on the previous branch automatically
+```
+
+**Exception**: if a task's scope spans the whole ticket (e.g., a 3-file refactor with no natural split), put it in a single branch. Use judgment — a stack that needs a rebase on every tiny change is worse than a single well-scoped branch.
+
+Submit the whole stack at once:
+```bash
+gt submit --stack
+```
+
+Graphite creates one PR per branch, each targeting its parent. Reviewers see focused diffs instead of one giant PR.
+
 ---
 
 ## Full implementation workflow
