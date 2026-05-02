@@ -276,8 +276,9 @@ async def test_engine_add_remove_rule():
 # 10. test_engine_from_yaml
 # ---------------------------------------------------------------------------
 
-def test_engine_from_yaml():
-    """load a YAML file, verify rules parsed correctly."""
+@pytest.mark.anyio
+async def test_engine_from_yaml():
+    """load a YAML file, verify engine grants correct decision via check()."""
     yaml_content = textwrap.dedent("""\
         default_decision: deny
         rules:
@@ -296,12 +297,22 @@ def test_engine_from_yaml():
         tmp_path = f.name
 
     engine = PermissionEngine.from_yaml(tmp_path)
-    assert len(engine._config.rules) == 1
-    rule = engine._config.rules[0]
-    assert rule.effect == "allow"
-    assert rule.identity.match == "any"
-    assert rule.resource.pattern == "public/*"
-    assert "r" in rule.permissions
+
+    # Matching resource → ALLOW
+    result = await engine.check(
+        _identity("any-user"),
+        _resource("public/tool-a"),
+        Permission.READ,
+    )
+    assert result.decision == PermissionDecision.ALLOW
+
+    # Non-matching resource → DENY (default)
+    result = await engine.check(
+        _identity("any-user"),
+        _resource("private/secret"),
+        Permission.READ,
+    )
+    assert result.decision == PermissionDecision.DENY
 
 
 # ---------------------------------------------------------------------------
@@ -354,3 +365,56 @@ async def test_engine_type_match():
     agent = _identity("agent:bot", type=IdentityType.AGENT)
     result = await engine.check(agent, _resource("user_tool"), Permission.READ)
     assert result.decision == PermissionDecision.DENY
+
+
+# ---------------------------------------------------------------------------
+# 13. test_engine_deny_beats_escalate
+# ---------------------------------------------------------------------------
+
+@pytest.mark.anyio
+async def test_engine_deny_beats_escalate():
+    """DENY wins over ESCALATE and ALLOW."""
+    rules = [
+        PermissionRule(
+            id="r-allow",
+            identity=IdentityPattern(match="any", value="*"),
+            resource=ResourcePattern(type="*", pattern="*"),
+            permissions="rwx",
+            effect="allow",
+        ),
+        PermissionRule(
+            id="r-escalate",
+            identity=IdentityPattern(match="any", value="*"),
+            resource=ResourcePattern(type="*", pattern="*"),
+            permissions="rwx",
+            effect="escalate",
+        ),
+        PermissionRule(
+            id="r-deny",
+            identity=IdentityPattern(match="any", value="*"),
+            resource=ResourcePattern(type="*", pattern="*"),
+            permissions="rwx",
+            effect="deny",
+        ),
+    ]
+    config = PermissionConfig(rules=rules, default_decision=PermissionDecision.ALLOW)
+    engine = PermissionEngine(config)
+
+    result = await engine.check(
+        _identity("user:alice", type=IdentityType.USER),
+        _resource("data/x", type=ResourceType.FILE_PATH),
+        Permission.READ,
+    )
+    assert result.decision == PermissionDecision.DENY
+
+
+# ---------------------------------------------------------------------------
+# 14. test_engine_remove_rule_unknown_id
+# ---------------------------------------------------------------------------
+
+def test_engine_remove_rule_unknown_id():
+    """remove_rule raises KeyError for an unknown rule ID."""
+    config = PermissionConfig()
+    engine = PermissionEngine(config)
+    with pytest.raises(KeyError):
+        engine.remove_rule("does-not-exist")

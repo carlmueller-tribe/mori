@@ -1,11 +1,11 @@
 """PermissionEngine — deny-wins resolution for Mori permission rules."""
 from __future__ import annotations
 
+import asyncio
+import concurrent.futures
 import fnmatch
 from pathlib import Path
 from typing import Any
-
-import anyio
 
 from mori.permission.types import (
     Condition,
@@ -57,6 +57,7 @@ class PermissionEngine:
             if self._rule_matches(rule, identity, resource, permission)
         ]
 
+        # priority field is stored for future ordering; deny-wins does not sort by priority in v0.5
         # Deny-wins ordering
         for rule in matching:
             if rule.effect == "deny":
@@ -97,34 +98,15 @@ class PermissionEngine:
         permission: Permission,
     ) -> bool:
         """Synchronous wrapper around :meth:`check`. Returns True iff ALLOW."""
-        result = anyio.from_thread.run_sync(
-            lambda: anyio.run(self.check, identity, resource, permission)
-        ) if False else self._sync_check(identity, resource, permission)
-        return result.decision == PermissionDecision.ALLOW
-
-    def _sync_check(
-        self,
-        identity: Identity,
-        resource: Resource,
-        permission: Permission,
-    ) -> PermissionResult:
-        """Run check() synchronously without requiring an existing event loop."""
-        import asyncio
-
         try:
             loop = asyncio.get_running_loop()
         except RuntimeError:
-            loop = None
-
-        if loop is not None and loop.is_running():
-            # We're inside an async context — use a new thread/loop via anyio
-            import concurrent.futures
-
-            with concurrent.futures.ThreadPoolExecutor(max_workers=1) as pool:
-                future = pool.submit(asyncio.run, self.check(identity, resource, permission))
-                return future.result()
-        else:
-            return asyncio.run(self.check(identity, resource, permission))
+            return asyncio.run(self.check(identity, resource, permission)).decision == PermissionDecision.ALLOW
+        with concurrent.futures.ThreadPoolExecutor(max_workers=1) as pool:
+            future = pool.submit(
+                lambda: asyncio.run(self.check(identity, resource, permission))
+            )
+            return future.result().decision == PermissionDecision.ALLOW
 
     async def explain(
         self,
@@ -155,7 +137,10 @@ class PermissionEngine:
 
     def remove_rule(self, rule_id: str) -> None:
         """Remove a rule from the engine's policy by rule ID."""
+        before = len(self._config.rules)
         self._config.rules = [r for r in self._config.rules if r.id != rule_id]
+        if len(self._config.rules) == before:
+            raise KeyError(f"No rule with id={rule_id!r}")
 
     @classmethod
     def from_yaml(cls, path: str | Path) -> "PermissionEngine":
@@ -178,41 +163,44 @@ class PermissionEngine:
         from uuid import uuid4
         import yaml  # lazy import — yaml is optional at module level
 
-        with open(path, "r") as f:
+        with open(path, "r", encoding="utf-8") as f:
             data = yaml.safe_load(f)
 
         default_raw = data.get("default_decision", "deny")
         default_decision = PermissionDecision(default_raw.lower())
 
         rules: list[PermissionRule] = []
-        for raw in data.get("rules", []):
-            identity_data = raw["identity"]
-            resource_data = raw["resource"]
+        for i, raw in enumerate(data.get("rules", [])):
+            try:
+                identity_data = raw["identity"]
+                resource_data = raw["resource"]
 
-            resource_type_raw = resource_data.get("type", "*")
-            if resource_type_raw == "*":
-                resource_type: ResourceType | str = "*"
-            else:
-                resource_type = ResourceType(resource_type_raw.lower())
+                resource_type_raw = resource_data.get("type", "*")
+                if resource_type_raw == "*":
+                    resource_type: ResourceType | str = "*"
+                else:
+                    resource_type = ResourceType(resource_type_raw.lower())
 
-            rule = PermissionRule(
-                id=raw.get("id", str(uuid4())),
-                identity=IdentityPattern(
-                    match=identity_data["match"],
-                    value=identity_data["value"],
-                ),
-                resource=ResourcePattern(
-                    type=resource_type,
-                    pattern=resource_data["pattern"],
-                ),
-                permissions=raw["permissions"],
-                effect=raw["effect"].lower(),
-                priority=raw.get("priority", 100),
-                conditions=[
-                    Condition(**c) for c in raw.get("conditions", [])
-                ],
-            )
-            rules.append(rule)
+                rule = PermissionRule(
+                    id=raw.get("id", str(uuid4())),
+                    identity=IdentityPattern(
+                        match=identity_data["match"],
+                        value=identity_data["value"],
+                    ),
+                    resource=ResourcePattern(
+                        type=resource_type,
+                        pattern=resource_data["pattern"],
+                    ),
+                    permissions=raw["permissions"],
+                    effect=raw["effect"].lower(),
+                    priority=raw.get("priority", 100),
+                    conditions=[
+                        Condition(**c) for c in raw.get("conditions", [])
+                    ],
+                )
+                rules.append(rule)
+            except (KeyError, ValueError) as exc:
+                raise ValueError(f"Invalid rule at index {i}: {exc}") from exc
 
         config = PermissionConfig(
             rules=rules,
