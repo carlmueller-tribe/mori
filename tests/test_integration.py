@@ -7,15 +7,13 @@ test with Claude, set ANTHROPIC_API_KEY and run:
 
 from unittest.mock import AsyncMock, patch
 
-import pytest
-
 from mori import Mori
 from mori.types import (
     Message,
     ModelResponse,
     RunStatus,
-    ToolCall,
     TokenUsage,
+    ToolCall,
 )
 
 
@@ -85,11 +83,7 @@ async def test_v01_simple_no_tools():
         mock_adapter.invoke = AsyncMock(return_value=_text_response("Hello! How can I help?"))
         MockAdapter.return_value = mock_adapter
 
-        agent = (
-            Mori.builder()
-            .model("anthropic", api_key="test")
-            .build()
-        )
+        agent = Mori.builder().model("anthropic", api_key="test").build()
         result = await agent.run("Hello")
 
         assert result.status == RunStatus.COMPLETED
@@ -102,9 +96,7 @@ async def test_v01_step_limit_enforced():
     """Agent stops when step limit is reached."""
     with patch("mori.agent.AnthropicAdapter") as MockAdapter:
         mock_adapter = AsyncMock()
-        mock_adapter.invoke = AsyncMock(
-            return_value=_tool_response("call_n", "noop", {})
-        )
+        mock_adapter.invoke = AsyncMock(return_value=_tool_response("call_n", "noop", {}))
         MockAdapter.return_value = mock_adapter
 
         def noop() -> str:

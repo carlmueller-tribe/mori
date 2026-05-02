@@ -1,20 +1,25 @@
 # tests/test_events_v04.py
-from datetime import datetime, timezone
-from mori.observability.events import (
-    SkillDiscoverEvent, SkillLoadEvent,
-    BudgetRebalanceEvent, CompactionEvent,
-)
+from datetime import UTC, datetime
+
 from mori.budget.types import BudgetSlot, CompactionStage, StageResult
-from mori.types import RunId, DisclosureLevel
+from mori.observability.events import (
+    BudgetRebalanceEvent,
+    CompactionEvent,
+    SkillDiscoverEvent,
+    SkillLoadEvent,
+)
+from mori.types import DisclosureLevel, RunId
 
 
 def _now():
-    return datetime.now(timezone.utc)
+    return datetime.now(UTC)
 
 
 def test_skill_discover_event():
     e = SkillDiscoverEvent(
-        event_id="e1", timestamp=_now(), run_id=RunId("r1"),
+        event_id="e1",
+        timestamp=_now(),
+        run_id=RunId("r1"),
         task_preview="fix the test",
         candidates_found=2,
         top_match_name="bug-fix",
@@ -27,7 +32,9 @@ def test_skill_discover_event():
 
 def test_skill_load_event():
     e = SkillLoadEvent(
-        event_id="e2", timestamp=_now(), run_id=RunId("r1"),
+        event_id="e2",
+        timestamp=_now(),
+        run_id=RunId("r1"),
         skill_id="bug-fix",
         disclosure_level=DisclosureLevel.SUMMARY,
         token_estimate=120,
@@ -39,7 +46,9 @@ def test_skill_load_event():
 
 def test_budget_rebalance_event():
     e = BudgetRebalanceEvent(
-        event_id="e3", timestamp=_now(), run_id=RunId("r1"),
+        event_id="e3",
+        timestamp=_now(),
+        run_id=RunId("r1"),
         phase="plan",
         allocations={BudgetSlot.MEMORY: 25_000, BudgetSlot.CONVERSATION: 30_000},
         total_consumed=10_000,
@@ -52,7 +61,9 @@ def test_budget_rebalance_event():
 def test_compaction_event():
     stages = [StageResult(stage=CompactionStage.RESULT_TRIM, tokens_reclaimed=500, ran=True)]
     e = CompactionEvent(
-        event_id="e4", timestamp=_now(), run_id=RunId("r1"),
+        event_id="e4",
+        timestamp=_now(),
+        run_id=RunId("r1"),
         stages_run=stages,
         total_tokens_reclaimed=500,
         final_utilization=0.80,
@@ -63,12 +74,15 @@ def test_compaction_event():
 
 def test_mori_state_has_active_skill_payload():
     from mori.runtime.state import MoriState
-    from mori.types import RunId, ThreadId, RunStatus
+    from mori.types import RunId, RunStatus, ThreadId
+
     state = MoriState(
-        run_id=RunId("r1"), thread_id=ThreadId("t1"), task="test",
+        run_id=RunId("r1"),
+        thread_id=ThreadId("t1"),
+        task="test",
         status=RunStatus.RUNNING,
-        started_at=datetime.now(timezone.utc),
-        last_progress_at=datetime.now(timezone.utc),
+        started_at=datetime.now(UTC),
+        last_progress_at=datetime.now(UTC),
     )
     assert state.active_skill_payload is None
     state.active_skill_payload = "anything"

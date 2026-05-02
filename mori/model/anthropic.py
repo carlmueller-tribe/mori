@@ -2,20 +2,21 @@
 
 from __future__ import annotations
 
-from typing import Any, AsyncIterator
+from collections.abc import AsyncIterator
+from typing import Any
 
 try:
     import anthropic
 except ImportError:
-    anthropic = None
+    anthropic = None  # type: ignore[assignment]
 
-from mori.model.base import ModelAdapter, StreamChunk
+from mori.model.base import StreamChunk
 from mori.types import (
     Message,
     ModelRequest,
     ModelResponse,
-    ToolCall,
     TokenUsage,
+    ToolCall,
     ToolSpec,
 )
 
@@ -62,9 +63,7 @@ class AnthropicAdapter:
     def max_context_tokens(self) -> int:
         return _CONTEXT_WINDOWS.get(self._model, _DEFAULT_CONTEXT)
 
-    def _extract_system(
-        self, messages: list[Message]
-    ) -> tuple[str | None, list[Message]]:
+    def _extract_system(self, messages: list[Message]) -> tuple[str | None, list[Message]]:
         """Extract the system message (Anthropic uses a separate parameter)."""
         system: str | None = None
         remaining: list[Message] = []
@@ -99,27 +98,33 @@ class AnthropicAdapter:
                 ):
                     converted[-1]["content"].append(tool_result_block)
                 else:
-                    converted.append({
-                        "role": "user",
-                        "content": [tool_result_block],
-                    })
+                    converted.append(
+                        {
+                            "role": "user",
+                            "content": [tool_result_block],
+                        }
+                    )
             elif msg.role == "assistant" and msg.tool_calls:
                 content_blocks: list[dict[str, Any]] = []
                 if msg.content:
                     content_blocks.append({"type": "text", "text": msg.content})
                 for tc in msg.tool_calls:
-                    content_blocks.append({
-                        "type": "tool_use",
-                        "id": tc.id,
-                        "name": tc.name,
-                        "input": tc.arguments,
-                    })
+                    content_blocks.append(
+                        {
+                            "type": "tool_use",
+                            "id": tc.id,
+                            "name": tc.name,
+                            "input": tc.arguments,
+                        }
+                    )
                 converted.append({"role": "assistant", "content": content_blocks})
             else:
-                converted.append({
-                    "role": msg.role,
-                    "content": msg.content if isinstance(msg.content, str) else msg.content,
-                })
+                converted.append(
+                    {
+                        "role": msg.role,
+                        "content": msg.content if isinstance(msg.content, str) else msg.content,
+                    }
+                )
         return converted
 
     def _convert_tools(self, specs: list[ToolSpec]) -> list[dict[str, Any]]:

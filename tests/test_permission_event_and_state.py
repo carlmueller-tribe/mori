@@ -1,21 +1,19 @@
 """Tests for PermissionCheckEvent and MoriState paused fields."""
 
-from datetime import datetime, timezone
-
-import pytest
+from datetime import UTC, datetime
 
 from mori.observability.events import PermissionCheckEvent
 from mori.runtime.state import MoriState
 from mori.types import RunId, ThreadId, ToolCall
 
-
 # ── Helpers ──────────────────────────────────────────────────
+
 
 def make_event(**kwargs):
     defaults = dict(
         event_id="ev1",
         event_type="permission.check",
-        timestamp=datetime.now(timezone.utc),
+        timestamp=datetime.now(UTC),
         run_id=RunId("r1"),
         identity_id="user:alice",
         resource_id="file:/secrets",
@@ -31,14 +29,15 @@ def make_state(**kwargs):
         run_id=RunId("r1"),
         thread_id=ThreadId("t1"),
         task="test task",
-        started_at=datetime.now(timezone.utc),
-        last_progress_at=datetime.now(timezone.utc),
+        started_at=datetime.now(UTC),
+        last_progress_at=datetime.now(UTC),
     )
     defaults.update(kwargs)
     return MoriState(**defaults)
 
 
 # ── PermissionCheckEvent tests ────────────────────────────────
+
 
 def test_permission_check_event_fields():
     event = make_event(
@@ -59,6 +58,7 @@ def test_permission_check_event_defaults():
 
 
 # ── MoriState paused fields tests ─────────────────────────────
+
 
 def test_moristate_paused_reason_default():
     state = make_state()

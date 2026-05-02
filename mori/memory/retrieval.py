@@ -1,14 +1,17 @@
 """4-stage retrieval pipeline for memory reads."""
+
 from __future__ import annotations
+
 import math
-from datetime import datetime, timezone
+from datetime import UTC, datetime
+
 from mori.memory.backends.base import MemoryBackend
 from mori.memory.embedder import Embedder
-from mori.types import MemoryFilters, MemoryLayer, MemoryRecord, MemoryRecordId, MemorySlice
+from mori.types import MemoryFilters, MemoryLayer, MemoryRecord, MemorySlice
 
 
 def _recency_score(created_at: datetime) -> float:
-    age = max(0.0, (datetime.now(timezone.utc) - created_at).total_seconds())
+    age = max(0.0, (datetime.now(UTC) - created_at).total_seconds())
     return math.exp(-age / 86400.0)
 
 
@@ -39,7 +42,9 @@ async def retrieve(
     search_layers = layers or list(MemoryLayer)
     all_results: list[tuple[MemoryRecord, float]] = []
     for layer in search_layers:
-        results = await backend.search(embedding=embeddings[0], layer=layer, limit=20, filters=filters)
+        results = await backend.search(
+            embedding=embeddings[0], layer=layer, limit=20, filters=filters
+        )  # noqa: E501
         all_results.extend(results)
 
     # Stage 3: Relevance Scoring

@@ -14,7 +14,6 @@ Usage:
 The demo creates examples/memory_sessions.db and deletes it on exit.
 """
 
-import ast
 import asyncio
 import operator
 from pathlib import Path
@@ -31,13 +30,14 @@ DB_PATH = str(Path(__file__).parent / "memory_sessions.db")
 
 # ── Tools ────────────────────────────────────────────────────
 
+
 def lookup(topic: str) -> str:
     """Look up a simple fact about a topic."""
     facts = {
-        "paris":     "Paris is the capital of France, population ~2.1 million.",
-        "london":    "London is the capital of the United Kingdom, population ~9 million.",
-        "berlin":    "Berlin is the capital of Germany, population ~3.7 million.",
-        "tokyo":     "Tokyo is the capital of Japan and the world's most populous metro area.",
+        "paris": "Paris is the capital of France, population ~2.1 million.",
+        "london": "London is the capital of the United Kingdom, population ~9 million.",
+        "berlin": "Berlin is the capital of Germany, population ~3.7 million.",
+        "tokyo": "Tokyo is the capital of Japan and the world's most populous metro area.",
         "fibonacci": "The Fibonacci sequence: 1, 1, 2, 3, 5, 8, 13, 21, 34, 55 ...",
     }
     key = topic.lower().strip()
@@ -50,10 +50,10 @@ def compute(a: float, b: float, op: str) -> str:
     op: one of 'add', 'subtract', 'multiply', 'divide'
     """
     ops = {
-        "add":      operator.add,
+        "add": operator.add,
         "subtract": operator.sub,
         "multiply": operator.mul,
-        "divide":   operator.truediv,
+        "divide": operator.truediv,
     }
     if op not in ops:
         return f"Error: unknown op '{op}'. Use: add, subtract, multiply, divide"
@@ -64,12 +64,19 @@ def compute(a: float, b: float, op: str) -> str:
 
 # ── Helper ───────────────────────────────────────────────────
 
+
 def build_agent() -> Mori:
     return (
         Mori.builder()
         .model("anthropic", model="claude-sonnet-4-20250514")
-        .tool(lookup, description="Look up a fact about a topic (paris, london, berlin, tokyo, fibonacci)")
-        .tool(compute, description="Perform arithmetic: compute(a, b, op) where op is add/subtract/multiply/divide")
+        .tool(
+            lookup,
+            description="Look up a fact about a topic (paris, london, berlin, tokyo, fibonacci)",
+        )
+        .tool(
+            compute,
+            description="Perform arithmetic: compute(a, b, op) where op is add/subtract/multiply/divide",
+        )
         .memory_backend("sqlite", path=DB_PATH)
         .config(max_steps=8)
         .build()
@@ -83,6 +90,7 @@ def section(label: str) -> None:
 
 
 # ── Main ─────────────────────────────────────────────────────
+
 
 async def main() -> None:
     # Remove any leftover DB from a previous run
@@ -100,7 +108,7 @@ async def main() -> None:
     print(f"  [{result1.total_steps} steps]")
 
     stats1 = await agent1.memory.stats()
-    print(f"\n  Memory after run 1:")
+    print("\n  Memory after run 1:")
     print(f"    Working  : {stats1.records_per_layer[MemoryLayer.WORKING]}")
     print(f"    Episodic : {stats1.records_per_layer[MemoryLayer.EPISODIC]}")
     await agent1.close()
@@ -117,10 +125,12 @@ async def main() -> None:
     print(f"  [{result2.total_steps} steps]")
 
     stats2 = await agent2.memory.stats()
-    print(f"\n  Memory after run 2  (cumulative across both sessions):")
+    print("\n  Memory after run 2  (cumulative across both sessions):")
     print(f"    Working  : {stats2.records_per_layer[MemoryLayer.WORKING]}")
-    print(f"    Episodic : {stats2.records_per_layer[MemoryLayer.EPISODIC]}"
-          f"  ← 2 runs = 2 episodic records")
+    print(
+        f"    Episodic : {stats2.records_per_layer[MemoryLayer.EPISODIC]}"
+        f"  ← 2 runs = 2 episodic records"
+    )
     await agent2.close()
 
     # ── Run 3 — read accumulated history ──────────────────────
@@ -133,8 +143,10 @@ async def main() -> None:
     print(f"\n  {len(episodes)} episodic record(s) in {Path(DB_PATH).name}:\n")
     for i, ep in enumerate(episodes, 1):
         print(f"  [{i}] {ep.content[:120]}")
-        print(f"       written: {ep.created_at.strftime('%H:%M:%S')} UTC  "
-              f"provenance: {ep.provenance}")
+        print(
+            f"       written: {ep.created_at.strftime('%H:%M:%S')} UTC  "
+            f"provenance: {ep.provenance}"
+        )
         print()
 
     await agent3.close()

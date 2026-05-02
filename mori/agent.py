@@ -2,7 +2,8 @@
 
 from __future__ import annotations
 
-from typing import Any, Callable
+from collections.abc import Callable
+from typing import Any
 
 from mori.control.bounds import ControlBounds, ControlConfig
 from mori.model.anthropic import AnthropicAdapter
@@ -46,7 +47,10 @@ class MoriBuilder:
     ) -> MoriBuilder:
         if provider == "anthropic":
             self._model_adapter = AnthropicAdapter(
-                model=model, api_key=api_key, max_tokens=max_tokens, base_url=base_url,
+                model=model,
+                api_key=api_key,
+                max_tokens=max_tokens,
+                base_url=base_url,
             )
         else:
             raise ValueError(f"Unknown model provider: {provider}. Supported: anthropic")
@@ -76,12 +80,20 @@ class MoriBuilder:
         timeout_sec: float = 60.0,
         tags: list[str] | None = None,
     ) -> MoriBuilder:
-        self._cli_tools.append({
-            "name": name, "command": command, "description": description,
-            "args_format": args_format, "args_schema": args_schema,
-            "shell": shell, "cwd": cwd, "env": env, "timeout_sec": timeout_sec,
-            "tags": tags,
-        })
+        self._cli_tools.append(
+            {
+                "name": name,
+                "command": command,
+                "description": description,
+                "args_format": args_format,
+                "args_schema": args_schema,
+                "shell": shell,
+                "cwd": cwd,
+                "env": env,
+                "timeout_sec": timeout_sec,
+                "tags": tags,
+            }
+        )
         return self
 
     def mcp_server(
@@ -176,10 +188,11 @@ class MoriBuilder:
         # 4. Memory
         memory_module = None
         if self._memory_config:
-            from mori.memory.module import MemoryModule
             from mori.memory.backends.inmemory import InMemoryBackend
             from mori.memory.backends.sqlite import SQLiteBackend
+            from mori.memory.module import MemoryModule
             from mori.types import MemoryConfig
+
             backend_type = self._memory_config["type"]
             backend: InMemoryBackend | SQLiteBackend
             if backend_type == "inmemory":
@@ -188,11 +201,12 @@ class MoriBuilder:
                 sqlite_backend = SQLiteBackend(path=self._memory_config["path"])
                 # Note: SQLiteBackend needs initialize() — call it synchronously via sqlite3
                 import sqlite3
+
                 conn = sqlite3.connect(self._memory_config["path"])
                 conn.execute("""CREATE TABLE IF NOT EXISTS memory_records (
                     record_id TEXT PRIMARY KEY, layer TEXT NOT NULL, content TEXT NOT NULL,
                     metadata TEXT, created_at TEXT NOT NULL, updated_at TEXT NOT NULL,
-                    ttl_seconds INTEGER, provenance TEXT, confidence REAL DEFAULT 1.0, embedding BLOB)""")
+                    ttl_seconds INTEGER, provenance TEXT, confidence REAL DEFAULT 1.0, embedding BLOB)""")  # noqa: E501
                 conn.execute("CREATE INDEX IF NOT EXISTS idx_layer ON memory_records(layer)")
                 conn.commit()
                 conn.close()
@@ -204,17 +218,20 @@ class MoriBuilder:
             embedder = None
             try:
                 from mori.memory.embedder import AnthropicEmbedder
+
                 embedder = AnthropicEmbedder()
             except ImportError:
                 pass
-            memory_module = MemoryModule(backend=backend, config=MemoryConfig(),
-                embedder=embedder, model=self._model_adapter)
+            memory_module = MemoryModule(
+                backend=backend, config=MemoryConfig(), embedder=embedder, model=self._model_adapter
+            )
 
         # 5. Skills module
         skills_module = None
         if self._skill_registry_path:
-            from mori.skills.registry import FilesystemRegistry
             from mori.skills.module import SkillsModule
+            from mori.skills.registry import FilesystemRegistry
+
             reg = FilesystemRegistry(self._skill_registry_path)
             skills_module = SkillsModule(registry=reg)
 
@@ -223,6 +240,7 @@ class MoriBuilder:
         if self._budget_config:
             from mori.budget.manager import BudgetManager
             from mori.budget.types import BudgetConfig
+
             budget_manager = BudgetManager(BudgetConfig(**self._budget_config))
 
         # 7. Permission engine — only created when a policy file is provided
@@ -230,12 +248,16 @@ class MoriBuilder:
         permission_engine = None
         if self._policy_file:
             from mori.permission.engine import PermissionEngine
+
             permission_engine = PermissionEngine.from_yaml(self._policy_file)
 
         # 8. Checkpointer
         from mori.control.checkpoint import (
-            FileCheckpoints, InMemoryCheckpoints, SQLiteCheckpoints,
+            FileCheckpoints,
+            InMemoryCheckpoints,
+            SQLiteCheckpoints,
         )
+
         checkpointer: InMemoryCheckpoints | FileCheckpoints | SQLiteCheckpoints | None = None
         if self._checkpointer_config:
             ctype = self._checkpointer_config["type"]
@@ -252,25 +274,38 @@ class MoriBuilder:
         hook_registry = None
         if self._hook_handlers:
             from mori.hooks.registry import HookRegistry
+
             hook_registry = HookRegistry()
             for event_name, handler, priority in self._hook_handlers:
                 hook_registry.register(event_name, handler, priority=priority)
 
         # 10. Agent loop
         loop = AgentLoop(
-            model=self._model_adapter, tools=registry, observability=obs,
-            control=control, memory=memory_module,
-            skills=skills_module, budget=budget_manager,
-            checkpointer=checkpointer, permission=permission_engine,
-            identity=self._identity, hooks=hook_registry,
+            model=self._model_adapter,
+            tools=registry,
+            observability=obs,
+            control=control,
+            memory=memory_module,
+            skills=skills_module,
+            budget=budget_manager,
+            checkpointer=checkpointer,
+            permission=permission_engine,
+            identity=self._identity,
+            hooks=hook_registry,
         )
 
         return Mori(
-            loop=loop, tools=registry, observability=obs,
-            mcp_configs=self._mcp_servers, memory=memory_module,
-            skills=skills_module, budget=budget_manager,
-            identity=self._identity, permission=permission_engine,
-            checkpointer=checkpointer, hooks=hook_registry,
+            loop=loop,
+            tools=registry,
+            observability=obs,
+            mcp_configs=self._mcp_servers,
+            memory=memory_module,
+            skills=skills_module,
+            budget=budget_manager,
+            identity=self._identity,
+            permission=permission_engine,
+            checkpointer=checkpointer,
+            hooks=hook_registry,
         )
 
 

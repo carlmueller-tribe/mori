@@ -1,18 +1,22 @@
 """Budget types for Mori v0.4."""
+
 from __future__ import annotations
-from enum import Enum
+
+from enum import StrEnum
 from typing import Any
+
 from pydantic import Field, model_validator
+
 from mori.types import MoriModel
 
 
-class BudgetSlot(str, Enum):
+class BudgetSlot(StrEnum):
     SYSTEM_PROMPT = "system_prompt"
-    MEMORY        = "memory"
-    SKILL         = "skill"
-    TOOL_SCHEMAS  = "tool_schemas"
-    CONVERSATION  = "conversation"
-    GENERATION    = "generation"
+    MEMORY = "memory"
+    SKILL = "skill"
+    TOOL_SCHEMAS = "tool_schemas"
+    CONVERSATION = "conversation"
+    GENERATION = "generation"
 
 
 class BudgetConfig(MoriModel):
@@ -65,13 +69,13 @@ class BudgetReport(MoriModel):
     slots: list[SlotReport]
 
 
-class CompactionStage(str, Enum):
-    RESULT_TRIM             = "result_trim"
-    SCHEMA_DEFER            = "schema_defer"
-    TURN_SNIP               = "turn_snip"
-    SKILL_DOWNGRADE         = "skill_downgrade"
-    MEMORY_PRUNE            = "memory_prune"
-    CONVERSATION_SUMMARIZE  = "conversation_summarize"
+class CompactionStage(StrEnum):
+    RESULT_TRIM = "result_trim"
+    SCHEMA_DEFER = "schema_defer"
+    TURN_SNIP = "turn_snip"
+    SKILL_DOWNGRADE = "skill_downgrade"
+    MEMORY_PRUNE = "memory_prune"
+    CONVERSATION_SUMMARIZE = "conversation_summarize"
 
 
 class StageResult(MoriModel):

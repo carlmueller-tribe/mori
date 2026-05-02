@@ -2,10 +2,8 @@
 
 from unittest.mock import AsyncMock, patch
 
-import pytest
-
 from mori import Mori
-from mori.types import Message, ModelResponse, RunStatus, ToolCall, TokenUsage, ToolSource
+from mori.types import Message, ModelResponse, RunStatus, TokenUsage, ToolSource
 
 
 def _text_response(text: str) -> ModelResponse:
@@ -47,12 +45,7 @@ def test_builder_multiple_cli():
 def test_builder_sink_stdout():
     with patch("mori.agent.AnthropicAdapter") as MockAdapter:
         MockAdapter.return_value = AsyncMock()
-        agent = (
-            Mori.builder()
-            .model("anthropic", api_key="test")
-            .sink("stdout")
-            .build()
-        )
+        agent = Mori.builder().model("anthropic", api_key="test").sink("stdout").build()
         assert agent._obs is not None
 
 
@@ -60,12 +53,7 @@ def test_builder_sink_jsonl(tmp_path):
     path = str(tmp_path / "traces.jsonl")
     with patch("mori.agent.AnthropicAdapter") as MockAdapter:
         MockAdapter.return_value = AsyncMock()
-        agent = (
-            Mori.builder()
-            .model("anthropic", api_key="test")
-            .sink("jsonl", path=path)
-            .build()
-        )
+        agent = Mori.builder().model("anthropic", api_key="test").sink("jsonl", path=path).build()
         assert agent._obs is not None
 
 

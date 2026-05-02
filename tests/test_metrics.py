@@ -1,6 +1,6 @@
 """Tests for per-tool metrics and result truncation in ToolRegistry."""
 
-from mori.tools.registry import ToolRegistry, ToolMetrics
+from mori.tools.registry import ToolRegistry
 
 
 def test_metrics_initial_state():
@@ -26,8 +26,10 @@ async def test_metrics_increment_on_success():
 
 async def test_metrics_increment_on_failure():
     registry = ToolRegistry()
+
     def fail():
         raise ValueError("boom")
+
     registry.register("fail", fail, description="Fails")
     await registry.invoke("fail", {})
     metrics = registry.get_metrics("native:fail")
@@ -54,8 +56,10 @@ def test_get_metrics_unknown_tool():
 
 async def test_result_truncation():
     registry = ToolRegistry(max_result_tokens=10)
+
     def verbose() -> str:
         return "x" * 200
+
     registry.register("verbose", verbose, description="Verbose")
     result = await registry.invoke("verbose", {})
     assert result.success is True

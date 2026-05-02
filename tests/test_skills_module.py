@@ -1,11 +1,13 @@
 # tests/test_skills_module.py
 import textwrap
+from datetime import UTC, datetime, timedelta
+
 import pytest
-from datetime import datetime, timezone, timedelta
+
 from mori.skills.module import SkillsModule
 from mori.skills.registry import FilesystemRegistry
 from mori.skills.types import SkillExecutionOutcome
-from mori.types import DisclosureLevel, ToolSpec, ToolId, ToolSource
+from mori.types import DisclosureLevel, ToolId, ToolSource, ToolSpec
 
 MANIFEST = textwrap.dedent("""\
     name: bug-fix
@@ -59,7 +61,9 @@ def module(skills_dir):
 
 
 def test_discover_returns_candidates(module):
-    candidates = module.discover("fix the failing test", available_tools=["file-reader", "test-runner"])
+    candidates = module.discover(
+        "fix the failing test", available_tools=["file-reader", "test-runner"]
+    )
     assert len(candidates) > 0
 
 
@@ -104,13 +108,21 @@ async def test_load_full_respects_max_tokens(skills_dir):
 
 def test_bind_resolves_tools(module):
     from mori.skills.types import SkillPayload
+
     payload = SkillPayload(
-        skill_id="bug-fix", disclosure_level=DisclosureLevel.SUMMARY,
-        content="summary", token_estimate=2,
+        skill_id="bug-fix",
+        disclosure_level=DisclosureLevel.SUMMARY,
+        content="summary",
+        token_estimate=2,
     )
     specs = [
-        ToolSpec(tool_id=ToolId("t1"), name="file-reader",
-                 description="reads", input_schema={}, source=ToolSource.NATIVE),
+        ToolSpec(
+            tool_id=ToolId("t1"),
+            name="file-reader",
+            description="reads",
+            input_schema={},
+            source=ToolSource.NATIVE,
+        ),
     ]
     bound = module.bind(payload, specs)
     assert "file-reader" in bound.resolved_tools
@@ -118,27 +130,46 @@ def test_bind_resolves_tools(module):
 
 
 def test_health_success_rate(module):
-    now = datetime.now(timezone.utc)
+    now = datetime.now(UTC)
     for i in range(3):
-        module.record_outcome("bug-fix", SkillExecutionOutcome(
-            skill_id="bug-fix", run_id=f"r{i}", success=True,
-            steps_taken=2, timestamp=now,
-        ))
-    module.record_outcome("bug-fix", SkillExecutionOutcome(
-        skill_id="bug-fix", run_id="r3", success=False,
-        steps_taken=1, failure_reason="timeout", timestamp=now,
-    ))
+        module.record_outcome(
+            "bug-fix",
+            SkillExecutionOutcome(
+                skill_id="bug-fix",
+                run_id=f"r{i}",
+                success=True,
+                steps_taken=2,
+                timestamp=now,
+            ),
+        )
+    module.record_outcome(
+        "bug-fix",
+        SkillExecutionOutcome(
+            skill_id="bug-fix",
+            run_id="r3",
+            success=False,
+            steps_taken=1,
+            failure_reason="timeout",
+            timestamp=now,
+        ),
+    )
     report = module.health("bug-fix")
     assert report.total_runs == 4
     assert abs(report.success_rate - 0.75) < 0.01
 
 
 def test_health_stale_flag(module):
-    old = datetime.now(timezone.utc) - timedelta(days=91)
-    module.record_outcome("bug-fix", SkillExecutionOutcome(
-        skill_id="bug-fix", run_id="r0", success=True,
-        steps_taken=1, timestamp=old,
-    ))
+    old = datetime.now(UTC) - timedelta(days=91)
+    module.record_outcome(
+        "bug-fix",
+        SkillExecutionOutcome(
+            skill_id="bug-fix",
+            run_id="r0",
+            success=True,
+            steps_taken=1,
+            timestamp=old,
+        ),
+    )
     report = module.health("bug-fix")
     assert report.stale is True
 

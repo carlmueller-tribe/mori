@@ -1,8 +1,9 @@
-import os, textwrap
-import pytest
-from mori.skills.parser import parse_manifest, load_skill_md
-from mori.skills.types import SkillManifest, SkillValidationError
+import textwrap
 
+import pytest
+
+from mori.skills.parser import load_skill_md, parse_manifest
+from mori.skills.types import SkillManifest, SkillValidationError
 
 VALID_YAML = textwrap.dedent("""\
     name: bug-fix

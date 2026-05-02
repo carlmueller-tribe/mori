@@ -1,32 +1,43 @@
 """BudgetManager — per-slot token allocation and compaction orchestration."""
+
 from __future__ import annotations
+
+import contextlib
 from typing import Any, cast
+
 from mori.budget.types import (
-    BudgetConfig, BudgetSlot, CompactionModules, CompactionReport,
-    CompactionStage, ConsumeResult, RebalanceHints, SlotReport,
-    BudgetReport, StageResult,
+    BudgetConfig,
+    BudgetReport,
+    BudgetSlot,
+    CompactionModules,
+    CompactionReport,
+    CompactionStage,
+    ConsumeResult,
+    RebalanceHints,
+    SlotReport,
+    StageResult,
 )
 from mori.types import Phase, TokenBudget
 
 _BASE_ALLOC: dict[BudgetSlot, float] = {
     BudgetSlot.SYSTEM_PROMPT: 0.10,
-    BudgetSlot.MEMORY:        0.20,
-    BudgetSlot.SKILL:         0.15,
-    BudgetSlot.TOOL_SCHEMAS:  0.10,
-    BudgetSlot.CONVERSATION:  0.30,
-    BudgetSlot.GENERATION:    0.15,
+    BudgetSlot.MEMORY: 0.20,
+    BudgetSlot.SKILL: 0.15,
+    BudgetSlot.TOOL_SCHEMAS: 0.10,
+    BudgetSlot.CONVERSATION: 0.30,
+    BudgetSlot.GENERATION: 0.15,
 }
 
 _PHASE_OVERRIDES: dict[Phase, dict[BudgetSlot, float]] = {
     Phase.PLAN: {
-        BudgetSlot.MEMORY:       0.25,
+        BudgetSlot.MEMORY: 0.25,
         BudgetSlot.CONVERSATION: 0.30,
-        BudgetSlot.SKILL:        0.10,
+        BudgetSlot.SKILL: 0.10,
     },
     Phase.ACT: {
-        BudgetSlot.SKILL:        0.20,
+        BudgetSlot.SKILL: 0.20,
         BudgetSlot.TOOL_SCHEMAS: 0.15,
-        BudgetSlot.MEMORY:       0.15,
+        BudgetSlot.MEMORY: 0.15,
     },
 }
 
@@ -43,8 +54,7 @@ class BudgetManager:
         for slot, pct in fractions.items():
             existing = self._budgets.get(slot)
             consumed = existing.consumed if existing else 0
-            self._budgets[slot] = TokenBudget(allocated=max(0, int(total * pct)),
-                                              consumed=consumed)
+            self._budgets[slot] = TokenBudget(allocated=max(0, int(total * pct)), consumed=consumed)
 
     def _enforce_min_generation(self) -> None:
         gen = self._budgets[BudgetSlot.GENERATION]
@@ -67,9 +77,7 @@ class BudgetManager:
             deficit -= steal
             if deficit <= 0:
                 break
-        self._budgets[BudgetSlot.GENERATION] = TokenBudget(
-            allocated=min_gen, consumed=gen.consumed
-        )
+        self._budgets[BudgetSlot.GENERATION] = TokenBudget(allocated=min_gen, consumed=gen.consumed)
 
     def _init_allocations(self) -> None:
         overrides = self._config.slot_overrides
@@ -84,8 +92,9 @@ class BudgetManager:
         b = self._budgets[slot]
         new_consumed = b.consumed + tokens
         self._budgets[slot] = TokenBudget(allocated=b.allocated, consumed=new_consumed)
-        return ConsumeResult(slot=slot, consumed=new_consumed,
-                             over_budget=new_consumed > b.allocated)
+        return ConsumeResult(
+            slot=slot, consumed=new_consumed, over_budget=new_consumed > b.allocated
+        )
 
     def release(self, slot: BudgetSlot, tokens: int) -> None:
         b = self._budgets[slot]
@@ -105,10 +114,8 @@ class BudgetManager:
             fractions.update(_PHASE_OVERRIDES[phase])
         # Apply per-slot config overrides before normalization
         for slot_str, pct in self._config.slot_overrides.items():
-            try:
+            with contextlib.suppress(ValueError):
                 fractions[BudgetSlot(slot_str)] = pct
-            except ValueError:
-                pass
         # Normalize so fractions sum to 1.0 regardless of override combinations
         total_pct = sum(fractions.values())
         fractions = {k: v / total_pct for k, v in fractions.items()}
@@ -178,11 +185,11 @@ class BudgetManager:
         stage_results: list[StageResult] = []
 
         pipeline = [
-            (CompactionStage.RESULT_TRIM,            self._stage_result_trim),
-            (CompactionStage.SCHEMA_DEFER,           self._stage_schema_defer),
-            (CompactionStage.TURN_SNIP,              self._stage_turn_snip),
-            (CompactionStage.SKILL_DOWNGRADE,        self._stage_skill_downgrade),
-            (CompactionStage.MEMORY_PRUNE,           self._stage_memory_prune),
+            (CompactionStage.RESULT_TRIM, self._stage_result_trim),
+            (CompactionStage.SCHEMA_DEFER, self._stage_schema_defer),
+            (CompactionStage.TURN_SNIP, self._stage_turn_snip),
+            (CompactionStage.SKILL_DOWNGRADE, self._stage_skill_downgrade),
+            (CompactionStage.MEMORY_PRUNE, self._stage_memory_prune),
             (CompactionStage.CONVERSATION_SUMMARIZE, self._stage_conversation_summarize),
         ]
 
@@ -191,7 +198,9 @@ class BudgetManager:
                 stage_results.append(StageResult(stage=stage_enum, tokens_reclaimed=0, ran=False))
                 continue
             reclaimed = await stage_fn(state, modules)
-            stage_results.append(StageResult(stage=stage_enum, tokens_reclaimed=reclaimed, ran=True))
+            stage_results.append(
+                StageResult(stage=stage_enum, tokens_reclaimed=reclaimed, ran=True)
+            )  # noqa: E501
 
         final_report = self.assemble_budget_report()
         return CompactionReport(
@@ -233,8 +242,7 @@ class BudgetManager:
             msg = state.messages[i]
             if msg.role == "assistant" and msg.tool_calls:
                 reclaimed += sum(
-                    (len(tc.name) + len(str(tc.arguments))) // 4
-                    for tc in msg.tool_calls
+                    (len(tc.name) + len(str(tc.arguments))) // 4 for tc in msg.tool_calls
                 )
                 # keep assistant text, strip tool_calls
                 state.messages[i] = msg.model_copy(update={"tool_calls": None})
@@ -285,9 +293,7 @@ class BudgetManager:
         if new_slice.records:
             lines = ["[Memory Context]"]
             for r in new_slice.records:
-                lines.append(
-                    f"- {r.content} (layer: {r.layer.value}, confidence: {r.confidence})"
-                )
+                lines.append(f"- {r.content} (layer: {r.layer.value}, confidence: {r.confidence})")
             new_content: str | None = "\n".join(lines)
         else:
             new_content = None
@@ -304,37 +310,39 @@ class BudgetManager:
             self.release(BudgetSlot.MEMORY, reclaimed)
         return reclaimed
 
-    async def _stage_conversation_summarize(
-        self, state: Any, modules: CompactionModules
-    ) -> int:
+    async def _stage_conversation_summarize(self, state: Any, modules: CompactionModules) -> int:
         if not modules.model or len(state.messages) <= 6:
             return 0
         to_summarize = state.messages[1:-4]
         if not to_summarize:
             return 0
         old_tokens = sum(
-            len(m.content if isinstance(m.content, str) else "") // 4
-            for m in to_summarize
+            len(m.content if isinstance(m.content, str) else "") // 4 for m in to_summarize
         )
         summary_text = "\n".join(
             f"[{m.role}]: {(m.content if isinstance(m.content, str) else '')[:500]}"
             for m in to_summarize
         )
         from mori.types import Message, ModelRequest
+
         req = ModelRequest(
-            messages=[Message(role="user", content=(
-                "Summarize this conversation history concisely in 3-5 sentences, "
-                f"preserving key facts and decisions:\n\n{summary_text}"
-            ))],
+            messages=[
+                Message(
+                    role="user",
+                    content=(
+                        "Summarize this conversation history concisely in 3-5 sentences, "
+                        f"preserving key facts and decisions:\n\n{summary_text}"
+                    ),
+                )
+            ],
             tools=None,
         )
         response = await modules.model.invoke(req)
         summary_content = f"[Conversation Summary]\n{response.message.content}"
-        state.messages = (
-            [state.messages[0],
-             Message(role="system", content=summary_content)]
-            + list(state.messages[-4:])
-        )
+        state.messages = [
+            state.messages[0],
+            Message(role="system", content=summary_content),
+        ] + list(state.messages[-4:])
         new_tokens = len(summary_content) // 4
         reclaimed = max(0, old_tokens - new_tokens)
         if reclaimed:

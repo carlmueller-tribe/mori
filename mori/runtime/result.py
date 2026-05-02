@@ -2,8 +2,6 @@
 
 from __future__ import annotations
 
-from typing import Any
-
 from pydantic import Field
 
 from mori.runtime.state import MoriState
@@ -46,7 +44,9 @@ class RunResult(MoriModel):
     checkpoint_id: CheckpointId | None = None
 
     @staticmethod
-    def from_state(state: MoriState, duration_ms: float, checkpoint_id: CheckpointId | None = None) -> RunResult:
+    def from_state(
+        state: MoriState, duration_ms: float, checkpoint_id: CheckpointId | None = None
+    ) -> RunResult:  # noqa: E501
         """Build a RunResult from the final MoriState."""
         final_output: str | None = None
         for msg in reversed(state.messages):

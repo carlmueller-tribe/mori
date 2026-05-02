@@ -1,6 +1,6 @@
 """Tests for ObservabilityEngine — buffered event dispatch."""
 
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from unittest.mock import AsyncMock
 
 import pytest
@@ -9,18 +9,18 @@ from mori.observability.engine import ObservabilityEngine
 from mori.observability.events import (
     MoriEvent,
     ObservabilityConfig,
-    RunStartEvent,
     RunEndEvent,
+    RunStartEvent,
     ToolResultEvent,
 )
-from mori.types import RunId, RunStatus, TraceId
+from mori.types import RunId, RunStatus
 
 
 def _make_event(event_type: str = "test", **overrides) -> MoriEvent:
     defaults = {
         "event_id": "evt_1",
         "event_type": event_type,
-        "timestamp": datetime.now(timezone.utc),
+        "timestamp": datetime.now(UTC),
         "run_id": RunId("run_1"),
     }
     defaults.update(overrides)
@@ -117,10 +117,14 @@ async def test_enabled_event_types_filter(mock_sink):
         sinks=[mock_sink],
         config=ObservabilityConfig(buffer_size=1, enabled_event_types=["run.start"]),
     )
-    await engine.emit(RunStartEvent(
-        event_id="evt_1", timestamp=datetime.now(timezone.utc),
-        run_id=RunId("run_1"), task="test",
-    ))
+    await engine.emit(
+        RunStartEvent(
+            event_id="evt_1",
+            timestamp=datetime.now(UTC),
+            run_id=RunId("run_1"),
+            task="test",
+        )
+    )
     await engine.emit(_make_event(event_type="other.type"))
     await engine.flush()
 
@@ -133,23 +137,47 @@ async def test_enabled_event_types_filter(mock_sink):
 
 async def test_get_run_summary():
     engine = ObservabilityEngine(sinks=[], config=ObservabilityConfig())
-    await engine.emit(RunStartEvent(
-        event_id="evt_1", timestamp=datetime.now(timezone.utc),
-        run_id=RunId("run_1"), task="test",
-    ))
-    await engine.emit(ToolResultEvent(
-        event_id="evt_2", timestamp=datetime.now(timezone.utc),
-        run_id=RunId("run_1"), tool_name="add", success=True, latency_ms=5.0,
-    ))
-    await engine.emit(ToolResultEvent(
-        event_id="evt_3", timestamp=datetime.now(timezone.utc),
-        run_id=RunId("run_1"), tool_name="fail", success=False, latency_ms=10.0, error="broke",
-    ))
-    await engine.emit(RunEndEvent(
-        event_id="evt_4", timestamp=datetime.now(timezone.utc),
-        run_id=RunId("run_1"), status=RunStatus.COMPLETED,
-        total_steps=2, total_input_tokens=300, total_output_tokens=100, duration_ms=1000.0,
-    ))
+    await engine.emit(
+        RunStartEvent(
+            event_id="evt_1",
+            timestamp=datetime.now(UTC),
+            run_id=RunId("run_1"),
+            task="test",
+        )
+    )
+    await engine.emit(
+        ToolResultEvent(
+            event_id="evt_2",
+            timestamp=datetime.now(UTC),
+            run_id=RunId("run_1"),
+            tool_name="add",
+            success=True,
+            latency_ms=5.0,
+        )
+    )
+    await engine.emit(
+        ToolResultEvent(
+            event_id="evt_3",
+            timestamp=datetime.now(UTC),
+            run_id=RunId("run_1"),
+            tool_name="fail",
+            success=False,
+            latency_ms=10.0,
+            error="broke",
+        )
+    )
+    await engine.emit(
+        RunEndEvent(
+            event_id="evt_4",
+            timestamp=datetime.now(UTC),
+            run_id=RunId("run_1"),
+            status=RunStatus.COMPLETED,
+            total_steps=2,
+            total_input_tokens=300,
+            total_output_tokens=100,
+            duration_ms=1000.0,
+        )
+    )
     summary = engine.get_run_summary(RunId("run_1"))
     assert summary.total_tool_calls == 2
     assert summary.total_tool_failures == 1

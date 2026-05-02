@@ -1,5 +1,7 @@
 """Embedder protocol and implementations."""
+
 from __future__ import annotations
+
 from typing import Protocol, cast, runtime_checkable
 
 try:
@@ -7,14 +9,17 @@ try:
 except ImportError:
     voyageai = None
 
+
 @runtime_checkable
 class Embedder(Protocol):
     async def embed(self, texts: list[str]) -> list[list[float]]: ...
     @property
     def dimensions(self) -> int: ...
 
+
 class AnthropicEmbedder:
     """Embedder using Voyage AI (Anthropic's embedding partner)."""
+
     def __init__(self, api_key: str | None = None, model: str = "voyage-3") -> None:
         if voyageai is None:
             raise ImportError("Install voyageai: pip install voyageai")

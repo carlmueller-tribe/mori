@@ -1,6 +1,5 @@
 """Tests for schema inference from Python type annotations."""
 
-import pytest
 from pydantic import BaseModel
 
 from mori.tools.schema import infer_schema

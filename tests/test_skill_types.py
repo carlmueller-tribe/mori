@@ -1,16 +1,23 @@
-import pytest
+from datetime import UTC
+
 from mori.skills.types import (
-    SkillManifest, SkillCandidate, CompatibilityReport,
-    SkillPayload, BoundSkill, SkillExecutionOutcome,
-    SkillHealthReport, SkillValidationError,
+    BoundSkill,
+    SkillExecutionOutcome,
+    SkillHealthReport,
+    SkillManifest,
+    SkillPayload,
+    SkillValidationError,
 )
-from mori.types import DisclosureLevel, ToolSpec, ToolId, ToolSource
+from mori.types import DisclosureLevel, ToolId, ToolSource, ToolSpec
 
 
 def _make_manifest(**kwargs):
     base = dict(
-        name="my-skill", version="1.0.0", description="Test",
-        capabilities=["cap1"], scope={"domains": [], "contexts": []},
+        name="my-skill",
+        version="1.0.0",
+        description="Test",
+        capabilities=["cap1"],
+        scope={"domains": [], "contexts": []},
         preconditions={"tools_required": [], "min_context_tokens": 100},
         constraints={"max_files": 10, "requires_approval_for": []},
         triggers={"semantic": ["fix bug"], "structural": []},
@@ -44,12 +51,17 @@ def test_skill_payload_token_estimate():
 def test_bound_skill_unresolved():
     manifest = _make_manifest()
     spec = ToolSpec(
-        tool_id=ToolId("t1"), name="file-reader",
-        description="reads files", input_schema={}, source=ToolSource.NATIVE,
+        tool_id=ToolId("t1"),
+        name="file-reader",
+        description="reads files",
+        input_schema={},
+        source=ToolSource.NATIVE,
     )
     payload = SkillPayload(
-        skill_id="my-skill", disclosure_level=DisclosureLevel.SUMMARY,
-        content="summary", token_estimate=2,
+        skill_id="my-skill",
+        disclosure_level=DisclosureLevel.SUMMARY,
+        content="summary",
+        token_estimate=2,
     )
     b = BoundSkill(
         payload=payload,
@@ -67,11 +79,15 @@ def test_skill_validation_error_is_exception():
 
 
 def test_skill_execution_outcome():
-    from datetime import datetime, timezone
+    from datetime import datetime
+
     o = SkillExecutionOutcome(
-        skill_id="my-skill", run_id="run_1", success=True,
-        steps_taken=3, failure_reason=None,
-        timestamp=datetime.now(timezone.utc),
+        skill_id="my-skill",
+        run_id="run_1",
+        success=True,
+        steps_taken=3,
+        failure_reason=None,
+        timestamp=datetime.now(UTC),
     )
     assert o.success is True
 
@@ -83,11 +99,16 @@ def test_skill_validation_error_path():
 
 
 def test_skill_health_report():
-    from datetime import datetime, timezone
+    from datetime import datetime
+
     report = SkillHealthReport(
-        skill_id="bug-fix", total_runs=10, success_rate=0.8,
-        avg_steps=3.5, common_failures=["timeout"],
-        last_used=datetime.now(timezone.utc), stale=False,
+        skill_id="bug-fix",
+        total_runs=10,
+        success_rate=0.8,
+        avg_steps=3.5,
+        common_failures=["timeout"],
+        last_used=datetime.now(UTC),
+        stale=False,
     )
     assert report.success_rate == 0.8
     assert report.stale is False

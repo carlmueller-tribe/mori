@@ -4,8 +4,8 @@ from __future__ import annotations
 
 import secrets
 import time
-from datetime import datetime, timezone
-from typing import Any, TYPE_CHECKING, cast
+from datetime import UTC, datetime
+from typing import TYPE_CHECKING, Any, cast
 
 from mori.budget.types import BudgetSlot
 from mori.model.base import ModelAdapter
@@ -57,6 +57,7 @@ class AgentLoop:
         self._obs = observability
         if control is None:
             from mori.control.bounds import ControlBounds, ControlConfig
+
             control = ControlBounds(config=ControlConfig())
         self._control = control
         self._memory = memory
@@ -72,20 +73,26 @@ class AgentLoop:
         if self._obs:
             await self._obs.emit(event)
 
-    def _init_state(self, task: str, thread_id: ThreadId | None = None, context: dict[str, Any] | None = None) -> MoriState:
-        now = datetime.now(timezone.utc)
+    def _init_state(
+        self, task: str, thread_id: ThreadId | None = None, context: dict[str, Any] | None = None
+    ) -> MoriState:  # noqa: E501
+        now = datetime.now(UTC)
         return MoriState(
             run_id=RunId(f"run_{_uid()}"),
             thread_id=thread_id or ThreadId(f"thread_{_uid()}"),
-            task=task, context=context or {},
+            task=task,
+            context=context or {},
             messages=[Message(role="user", content=task)],
-            status=RunStatus.RUNNING, started_at=now, last_progress_at=now,
+            status=RunStatus.RUNNING,
+            started_at=now,
+            last_progress_at=now,
         )
 
     async def _phase_retrieve(self, state: MoriState) -> None:
         # Memory read (unchanged from v0.3)
         if self._memory:
             from mori.observability.events import MemoryReadEvent
+
             start = time.monotonic()
             memory_slice = await self._memory.read(
                 query=state.task, task_context=state.task, max_tokens=2000
@@ -94,22 +101,26 @@ class AgentLoop:
             state.memory_slice = memory_slice
             if self._budget:
                 self._budget.consume(BudgetSlot.MEMORY, memory_slice.total_tokens)
-            await self._emit(MemoryReadEvent(
-                event_id=f"evt_{_uid()}", timestamp=datetime.now(timezone.utc),
-                run_id=state.run_id, query=state.task,
-                layers=[l for l in memory_slice.layers_searched],
-                records_returned=len(memory_slice.records),
-                tokens_consumed=memory_slice.total_tokens,
-                duration_ms=elapsed,
-            ))
+            await self._emit(
+                MemoryReadEvent(
+                    event_id=f"evt_{_uid()}",
+                    timestamp=datetime.now(UTC),
+                    run_id=state.run_id,
+                    query=state.task,
+                    layers=list(memory_slice.layers_searched),
+                    records_returned=len(memory_slice.records),
+                    tokens_consumed=memory_slice.total_tokens,
+                    duration_ms=elapsed,
+                )
+            )
 
         # Skill discovery + load
         if self._skills:
             from mori.observability.events import SkillDiscoverEvent, SkillLoadEvent
+
             available_tool_names = [s.name for s in self._tools.list_specs()]
             skill_budget_tokens = (
-                self._budget.get_allocation(BudgetSlot.SKILL).allocated
-                if self._budget else 999_999
+                self._budget.get_allocation(BudgetSlot.SKILL).allocated if self._budget else 999_999
             )
             disc_start = time.monotonic()
             candidates = self._skills.discover(
@@ -120,15 +131,18 @@ class AgentLoop:
             disc_elapsed = (time.monotonic() - disc_start) * 1000
 
             top = candidates[0] if candidates else None
-            await self._emit(SkillDiscoverEvent(
-                event_id=f"evt_{_uid()}", timestamp=datetime.now(timezone.utc),
-                run_id=state.run_id,
-                task_preview=state.task[:80],
-                candidates_found=len(candidates),
-                top_match_name=top.manifest.name if top else None,
-                top_match_score=top.score if top else None,
-                duration_ms=disc_elapsed,
-            ))
+            await self._emit(
+                SkillDiscoverEvent(
+                    event_id=f"evt_{_uid()}",
+                    timestamp=datetime.now(UTC),
+                    run_id=state.run_id,
+                    task_preview=state.task[:80],
+                    candidates_found=len(candidates),
+                    top_match_name=top.manifest.name if top else None,
+                    top_match_score=top.score if top else None,
+                    duration_ms=disc_elapsed,
+                )
+            )
 
             if top and top.compatibility_report.context_fits:
                 load_start = time.monotonic()
@@ -139,30 +153,37 @@ class AgentLoop:
                 state.active_skill_payload = payload
                 if self._budget:
                     self._budget.consume(BudgetSlot.SKILL, payload.token_estimate)
-                await self._emit(SkillLoadEvent(
-                    event_id=f"evt_{_uid()}", timestamp=datetime.now(timezone.utc),
-                    run_id=state.run_id,
-                    skill_id=payload.skill_id,
-                    disclosure_level=payload.disclosure_level,
-                    token_estimate=payload.token_estimate,
-                    duration_ms=load_elapsed,
-                ))
+                await self._emit(
+                    SkillLoadEvent(
+                        event_id=f"evt_{_uid()}",
+                        timestamp=datetime.now(UTC),
+                        run_id=state.run_id,
+                        skill_id=payload.skill_id,
+                        disclosure_level=payload.disclosure_level,
+                        token_estimate=payload.token_estimate,
+                        duration_ms=load_elapsed,
+                    )
+                )
 
     async def _pre_plan_compact(self, state: MoriState) -> None:
         if not self._budget:
             return
-        from mori.observability.events import BudgetRebalanceEvent, CompactionEvent
         from mori.budget.types import CompactionModules
+        from mori.observability.events import BudgetRebalanceEvent, CompactionEvent
 
         budgets = self._budget.rebalance(Phase.PLAN)
         report = self._budget.assemble_budget_report()
-        await self._emit(BudgetRebalanceEvent(
-            event_id=f"evt_{_uid()}", timestamp=datetime.now(timezone.utc),
-            run_id=state.run_id, phase=Phase.PLAN.value,
-            allocations={slot: b.allocated for slot, b in budgets.items()},
-            total_consumed=report.total_consumed,
-            utilization=report.utilization,
-        ))
+        await self._emit(
+            BudgetRebalanceEvent(
+                event_id=f"evt_{_uid()}",
+                timestamp=datetime.now(UTC),
+                run_id=state.run_id,
+                phase=Phase.PLAN.value,
+                allocations={slot: b.allocated for slot, b in budgets.items()},
+                total_consumed=report.total_consumed,
+                utilization=report.utilization,
+            )
+        )
 
         if self._budget.needs_compaction():
             compact_report = await self._budget.compact(
@@ -173,13 +194,16 @@ class AgentLoop:
                     model=self._model,
                 ),
             )
-            await self._emit(CompactionEvent(
-                event_id=f"evt_{_uid()}", timestamp=datetime.now(timezone.utc),
-                run_id=state.run_id,
-                stages_run=compact_report.stages,
-                total_tokens_reclaimed=compact_report.total_tokens_reclaimed,
-                final_utilization=compact_report.final_utilization,
-            ))
+            await self._emit(
+                CompactionEvent(
+                    event_id=f"evt_{_uid()}",
+                    timestamp=datetime.now(UTC),
+                    run_id=state.run_id,
+                    stages_run=compact_report.stages,
+                    total_tokens_reclaimed=compact_report.total_tokens_reclaimed,
+                    final_utilization=compact_report.final_utilization,
+                )
+            )
 
     def _assemble_request(self, state: MoriState) -> ModelRequest:
         # Schema deferral (Stage 2 compaction)
@@ -195,13 +219,16 @@ class AgentLoop:
                     tool_specs.append(spec)
                 else:
                     from mori.types import ToolSpec
-                    tool_specs.append(ToolSpec(
-                        tool_id=spec.tool_id,
-                        name=spec.name,
-                        description=spec.description,
-                        input_schema={},
-                        source=spec.source,
-                    ))
+
+                    tool_specs.append(
+                        ToolSpec(
+                            tool_id=spec.tool_id,
+                            name=spec.name,
+                            description=spec.description,
+                            input_schema={},
+                            source=spec.source,
+                        )
+                    )
         else:
             tool_specs = self._tools.list_specs()
 
@@ -243,11 +270,19 @@ class AgentLoop:
         for call in last_msg.tool_calls:
             # Permission check (if engine configured)
             if self._permission:
-                from mori.permission.types import Identity, IdentityType, Permission, Resource, ResourceType
+                from mori.permission.types import (
+                    Identity,
+                    IdentityType,
+                    Permission,
+                    Resource,
+                    ResourceType,
+                )
                 from mori.types import PermissionDecision
 
                 effective_identity = self._identity or Identity(
-                    id="agent:anonymous", name="anonymous", type=IdentityType.AGENT,
+                    id="agent:anonymous",
+                    name="anonymous",
+                    type=IdentityType.AGENT,
                 )
                 perm_result = await self._permission.check(
                     effective_identity,
@@ -255,26 +290,28 @@ class AgentLoop:
                     Permission.EXECUTE,
                 )
 
-                await self._emit(PermissionCheckEvent(
-                    event_id=f"evt_{_uid()}", timestamp=datetime.now(timezone.utc),
-                    run_id=state.run_id,
-                    identity_id=effective_identity.id,
-                    resource_id=call.name,
-                    permission=Permission.EXECUTE.value,
-                    decision=perm_result.decision.value,
-                    rule_id=(
-                        perm_result.rule_applied.id
-                        if perm_result.rule_applied else None
-                    ),
-                    explanation=perm_result.explanation,
-                ))
+                await self._emit(
+                    PermissionCheckEvent(
+                        event_id=f"evt_{_uid()}",
+                        timestamp=datetime.now(UTC),
+                        run_id=state.run_id,
+                        identity_id=effective_identity.id,
+                        resource_id=call.name,
+                        permission=Permission.EXECUTE.value,
+                        decision=perm_result.decision.value,
+                        rule_id=(perm_result.rule_applied.id if perm_result.rule_applied else None),
+                        explanation=perm_result.explanation,
+                    )
+                )
 
                 if self._hooks:
                     await self._hooks.dispatch_after("permission.check.after", perm_result)
 
                 if perm_result.decision == PermissionDecision.DENY:
                     deny_content = f"Permission denied: not authorized to invoke '{call.name}'"
-                    state.messages.append(Message(role="tool", content=deny_content, tool_call_id=call.id))
+                    state.messages.append(
+                        Message(role="tool", content=deny_content, tool_call_id=call.id)
+                    )  # noqa: E501
                     state.total_tool_calls += 1
                     continue
 
@@ -291,11 +328,16 @@ class AgentLoop:
             if self._hooks:
                 call = await self._hooks.dispatch_before("tool.invoke.before", call)
 
-            await self._emit(ToolInvokeEvent(
-                event_id=f"evt_{_uid()}", timestamp=datetime.now(timezone.utc),
-                run_id=state.run_id, tool_name=call.name, source=source,
-                arguments=call.arguments,
-            ))
+            await self._emit(
+                ToolInvokeEvent(
+                    event_id=f"evt_{_uid()}",
+                    timestamp=datetime.now(UTC),
+                    run_id=state.run_id,
+                    tool_name=call.name,
+                    source=source,
+                    arguments=call.arguments,
+                )
+            )
 
             result = await self._tools.invoke(call.name, call.arguments)
 
@@ -303,14 +345,22 @@ class AgentLoop:
             if self._hooks:
                 await self._hooks.dispatch_after("tool.invoke.after", result)
 
-            await self._emit(ToolResultEvent(
-                event_id=f"evt_{_uid()}", timestamp=datetime.now(timezone.utc),
-                run_id=state.run_id, tool_name=call.name, success=result.success,
-                latency_ms=result.latency_ms, error=result.error,
-                result_preview=str(result.content)[:200] if result.content else None,
-            ))
+            await self._emit(
+                ToolResultEvent(
+                    event_id=f"evt_{_uid()}",
+                    timestamp=datetime.now(UTC),
+                    run_id=state.run_id,
+                    tool_name=call.name,
+                    success=result.success,
+                    latency_ms=result.latency_ms,
+                    error=result.error,
+                    result_preview=str(result.content)[:200] if result.content else None,
+                )
+            )
 
-            content: str | list[dict[str, Any]] = result.content if result.success else f"ERROR: {result.error}"
+            content: str | list[dict[str, Any]] = (
+                result.content if result.success else f"ERROR: {result.error}"
+            )  # noqa: E501
             state.messages.append(Message(role="tool", content=content, tool_call_id=call.id))
             state.total_tool_calls += 1
 
@@ -326,22 +376,32 @@ class AgentLoop:
         if not self._memory:
             return
         from mori.observability.events import MemoryWriteEvent
-        from mori.types import MemoryRecord, MemoryRecordId, MemoryLayer
-        content = f"Step {state.step_count}: Task: {state.task[:100]}. Tool calls: {state.total_tool_calls}."
+        from mori.types import MemoryLayer, MemoryRecord, MemoryRecordId
+
+        content = f"Step {state.step_count}: Task: {state.task[:100]}. Tool calls: {state.total_tool_calls}."  # noqa: E501
         record = MemoryRecord(
             record_id=MemoryRecordId(f"mem_{secrets.token_hex(12)}"),
-            layer=MemoryLayer.WORKING, content=content,
-            created_at=datetime.now(timezone.utc), updated_at=datetime.now(timezone.utc),
+            layer=MemoryLayer.WORKING,
+            content=content,
+            created_at=datetime.now(UTC),
+            updated_at=datetime.now(UTC),
             provenance="loop:update",
         )
         receipt = await self._memory.write([record])
-        await self._emit(MemoryWriteEvent(
-            event_id=f"evt_{_uid()}", timestamp=datetime.now(timezone.utc),
-            run_id=state.run_id, layer=MemoryLayer.WORKING,
-            record_ids=[str(r) for r in receipt.record_ids], records_written=len(receipt.record_ids),
-        ))
+        await self._emit(
+            MemoryWriteEvent(
+                event_id=f"evt_{_uid()}",
+                timestamp=datetime.now(UTC),
+                run_id=state.run_id,
+                layer=MemoryLayer.WORKING,
+                record_ids=[str(r) for r in receipt.record_ids],
+                records_written=len(receipt.record_ids),  # noqa: E501
+            )
+        )
 
-    async def run(self, task: str, thread_id: ThreadId | None = None, context: dict[str, Any] | None = None) -> RunResult:
+    async def run(
+        self, task: str, thread_id: ThreadId | None = None, context: dict[str, Any] | None = None
+    ) -> RunResult:  # noqa: E501
         state = self._init_state(task, thread_id, context)
         return await self._run_from_state(state)
 
@@ -354,7 +414,7 @@ class AgentLoop:
         state = cp.restore()
         if state.status != RunStatus.PAUSED:
             raise ValueError(
-                f"Cannot resume thread {thread_id}: checkpoint has status '{state.status.value}', expected 'paused'"
+                f"Cannot resume thread {thread_id}: checkpoint has status '{state.status.value}', expected 'paused'"  # noqa: E501
             )
         approved = input.get("approved", False)
         msg = f"[Resume] {'Approved' if approved else 'Rejected'}. Details: {input}"
@@ -375,13 +435,19 @@ class AgentLoop:
 
         start_time = time.monotonic()
 
-        await self._emit(RunStartEvent(
-            event_id=f"evt_{_uid()}", timestamp=datetime.now(timezone.utc),
-            run_id=state.run_id, task=state.task,
-            config={"max_steps": self._control._config.max_steps},
-        ))
+        await self._emit(
+            RunStartEvent(
+                event_id=f"evt_{_uid()}",
+                timestamp=datetime.now(UTC),
+                run_id=state.run_id,
+                task=state.task,
+                config={"max_steps": self._control._config.max_steps},
+            )
+        )
         if self._hooks:
-            await self._hooks.dispatch_after("run.start", {"task": state.task, "run_id": state.run_id})
+            await self._hooks.dispatch_after(
+                "run.start", {"task": state.task, "run_id": state.run_id}
+            )  # noqa: E501
 
         while state.status == RunStatus.RUNNING:
             state.step_count += 1
@@ -392,12 +458,16 @@ class AgentLoop:
             bound_check = self._control.check_bounds(state)
             if not bound_check.ok:
                 for bound in bound_check.violated_bounds:
-                    await self._emit(BoundViolationEvent(
-                        event_id=f"evt_{_uid()}", timestamp=datetime.now(timezone.utc),
-                        run_id=state.run_id, bound_name=bound,
-                        current_value=bound_check.current_values.get("step_count", 0),
-                        limit_value=float(getattr(self._control._config, bound, 0)),
-                    ))
+                    await self._emit(
+                        BoundViolationEvent(
+                            event_id=f"evt_{_uid()}",
+                            timestamp=datetime.now(UTC),
+                            run_id=state.run_id,
+                            bound_name=bound,
+                            current_value=bound_check.current_values.get("step_count", 0),
+                            limit_value=float(getattr(self._control._config, bound, 0)),
+                        )
+                    )
                 state.status = RunStatus.FAILED
                 break
 
@@ -405,10 +475,16 @@ class AgentLoop:
             if self._checkpointer and state.step_count % self._checkpoint_every_n_steps == 0:
                 await self._checkpointer.save(state)
 
-            await self._emit(StepStartEvent(
-                event_id=f"evt_{_uid()}", timestamp=datetime.now(timezone.utc),
-                run_id=state.run_id, step_id=step_id, step_number=state.step_count, phase=Phase.PLAN,
-            ))
+            await self._emit(
+                StepStartEvent(
+                    event_id=f"evt_{_uid()}",
+                    timestamp=datetime.now(UTC),
+                    run_id=state.run_id,
+                    step_id=step_id,
+                    step_number=state.step_count,
+                    phase=Phase.PLAN,  # noqa: E501
+                )
+            )
 
             await self._phase_retrieve(state)
             await self._pre_plan_compact(state)
@@ -425,18 +501,26 @@ class AgentLoop:
             await self._phase_update(state)
 
             step_elapsed = (time.monotonic() - step_start) * 1000
-            await self._emit(StepEndEvent(
-                event_id=f"evt_{_uid()}", timestamp=datetime.now(timezone.utc),
-                run_id=state.run_id, step_id=step_id, step_number=state.step_count,
-                outcome=outcome, input_tokens=0, output_tokens=0, duration_ms=step_elapsed,
-            ))
+            await self._emit(
+                StepEndEvent(
+                    event_id=f"evt_{_uid()}",
+                    timestamp=datetime.now(UTC),
+                    run_id=state.run_id,
+                    step_id=step_id,
+                    step_number=state.step_count,
+                    outcome=outcome,
+                    input_tokens=0,
+                    output_tokens=0,
+                    duration_ms=step_elapsed,
+                )
+            )
 
             if outcome == StepOutcome.SUCCESS:
                 state.status = RunStatus.COMPLETED
                 break
 
             self._control.record_progress()
-            state.last_progress_at = datetime.now(timezone.utc)
+            state.last_progress_at = datetime.now(UTC)
 
         elapsed_ms = (time.monotonic() - start_time) * 1000
 
@@ -445,20 +529,31 @@ class AgentLoop:
         if self._checkpointer:
             checkpoint_id = await self._checkpointer.save(state)
 
-        await self._emit(RunEndEvent(
-            event_id=f"evt_{_uid()}", timestamp=datetime.now(timezone.utc),
-            run_id=state.run_id, status=state.status, total_steps=state.step_count,
-            total_input_tokens=state.total_input_tokens, total_output_tokens=state.total_output_tokens,
-            duration_ms=elapsed_ms,
-        ))
+        await self._emit(
+            RunEndEvent(
+                event_id=f"evt_{_uid()}",
+                timestamp=datetime.now(UTC),
+                run_id=state.run_id,
+                status=state.status,
+                total_steps=state.step_count,
+                total_input_tokens=state.total_input_tokens,
+                total_output_tokens=state.total_output_tokens,  # noqa: E501
+                duration_ms=elapsed_ms,
+            )
+        )
         if self._hooks:
-            await self._hooks.dispatch_after("run.end", {"status": state.status, "run_id": state.run_id})
+            await self._hooks.dispatch_after(
+                "run.end", {"status": state.status, "run_id": state.run_id}
+            )  # noqa: E501
 
         # Write episodic summary (memory) — skip if PAUSED
         if self._memory and state.status != RunStatus.PAUSED:
             from mori.observability.events import MemoryWriteEvent
-            from mori.types import MemoryRecord, MemoryRecordId, MemoryLayer
-            run_result = RunResult.from_state(state, duration_ms=elapsed_ms, checkpoint_id=checkpoint_id)
+            from mori.types import MemoryLayer, MemoryRecord, MemoryRecordId
+
+            run_result = RunResult.from_state(
+                state, duration_ms=elapsed_ms, checkpoint_id=checkpoint_id
+            )  # noqa: E501
             tools_used: set[str] = set()
             for msg in state.messages:
                 if msg.tool_calls:
@@ -471,16 +566,23 @@ class AgentLoop:
             )
             record = MemoryRecord(
                 record_id=MemoryRecordId(f"mem_{secrets.token_hex(12)}"),
-                layer=MemoryLayer.EPISODIC, content=ep_content,
-                created_at=datetime.now(timezone.utc), updated_at=datetime.now(timezone.utc),
+                layer=MemoryLayer.EPISODIC,
+                content=ep_content,
+                created_at=datetime.now(UTC),
+                updated_at=datetime.now(UTC),
                 provenance="loop:episodic",
             )
             receipt = await self._memory.write([record])
-            await self._emit(MemoryWriteEvent(
-                event_id=f"evt_{_uid()}", timestamp=datetime.now(timezone.utc),
-                run_id=state.run_id, layer=MemoryLayer.EPISODIC,
-                record_ids=[str(r) for r in receipt.record_ids], records_written=1,
-            ))
+            await self._emit(
+                MemoryWriteEvent(
+                    event_id=f"evt_{_uid()}",
+                    timestamp=datetime.now(UTC),
+                    run_id=state.run_id,
+                    layer=MemoryLayer.EPISODIC,
+                    record_ids=[str(r) for r in receipt.record_ids],
+                    records_written=1,
+                )
+            )
 
         if self._obs:
             await self._obs.flush()

@@ -1,6 +1,9 @@
 # tests/test_loop_v04.py
-import pytest
+import textwrap
 from unittest.mock import AsyncMock
+
+import pytest
+
 from mori.budget.manager import BudgetManager
 from mori.budget.types import BudgetConfig
 from mori.model.base import ModelAdapter
@@ -11,8 +14,6 @@ from mori.skills.module import SkillsModule
 from mori.skills.registry import FilesystemRegistry
 from mori.tools.registry import ToolRegistry
 from mori.types import Message, ModelResponse, RunStatus, TokenUsage
-import textwrap
-
 
 MANIFEST = textwrap.dedent("""\
     name: bug-fix
@@ -62,15 +63,26 @@ def skills_module(tmp_path):
 
 async def test_loop_with_skills_emits_discover_event(mock_model, skills_module):
     collected = []
+
     class Sink:
         realtime = True
-        async def write(self, e): collected.append(e)
-        async def write_batch(self, es): collected.extend(es)
-        async def flush(self): pass
-        async def close(self): pass
+
+        async def write(self, e):
+            collected.append(e)
+
+        async def write_batch(self, es):
+            collected.extend(es)
+
+        async def flush(self):
+            pass
+
+        async def close(self):
+            pass
+
     obs = ObservabilityEngine(sinks=[Sink()], config=ObservabilityConfig(buffer_size=100))
-    loop = AgentLoop(model=mock_model, tools=ToolRegistry(), observability=obs,
-                     skills=skills_module)
+    loop = AgentLoop(
+        model=mock_model, tools=ToolRegistry(), observability=obs, skills=skills_module
+    )
     await loop.run("fix test")
     await obs.flush()
     types = [e.event_type for e in collected]
@@ -82,8 +94,7 @@ async def test_loop_with_skills_injects_skill_context(mock_model, skills_module)
     await loop.run("fix test")
     request = mock_model.invoke.call_args[0][0]
     system_contents = " ".join(
-        m.content for m in request.messages if m.role == "system"
-        and isinstance(m.content, str)
+        m.content for m in request.messages if m.role == "system" and isinstance(m.content, str)
     )
     assert "[Skill Context]" in system_contents
 
@@ -96,16 +107,25 @@ async def test_loop_without_skills_still_works(mock_model):
 
 async def test_loop_with_budget_emits_rebalance_event(mock_model):
     collected = []
+
     class Sink:
         realtime = True
-        async def write(self, e): collected.append(e)
-        async def write_batch(self, es): collected.extend(es)
-        async def flush(self): pass
-        async def close(self): pass
+
+        async def write(self, e):
+            collected.append(e)
+
+        async def write_batch(self, es):
+            collected.extend(es)
+
+        async def flush(self):
+            pass
+
+        async def close(self):
+            pass
+
     obs = ObservabilityEngine(sinks=[Sink()], config=ObservabilityConfig(buffer_size=100))
     budget = BudgetManager(BudgetConfig(total_context_tokens=50_000))
-    loop = AgentLoop(model=mock_model, tools=ToolRegistry(),
-                     observability=obs, budget=budget)
+    loop = AgentLoop(model=mock_model, tools=ToolRegistry(), observability=obs, budget=budget)
     await loop.run("task")
     await obs.flush()
     types = [e.event_type for e in collected]

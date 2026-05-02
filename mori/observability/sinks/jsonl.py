@@ -10,7 +10,7 @@ from mori.observability.events import MoriEvent
 class JsonlSink:
     def __init__(self, path: str) -> None:
         self._path = path
-        self._file: io.TextIOWrapper = open(path, "a", encoding="utf-8")
+        self._file: io.TextIOWrapper = open(path, "a", encoding="utf-8")  # noqa: SIM115
 
     async def write(self, event: MoriEvent) -> None:
         self._file.write(event.model_dump_json() + "\n")

@@ -1,6 +1,8 @@
 # tests/test_builder_v04.py
 from unittest.mock import AsyncMock, patch
+
 import pytest
+
 from mori import Mori
 from mori.types import Message, ModelResponse, RunStatus, TokenUsage
 
@@ -15,9 +17,11 @@ def _text_response(text):
 
 def test_builder_skill_registry(tmp_path):
     import textwrap
+
     d = tmp_path / "bug-fix"
     d.mkdir()
-    (d / "manifest.yaml").write_text(textwrap.dedent("""\
+    (d / "manifest.yaml").write_text(
+        textwrap.dedent("""\
         name: bug-fix
         version: 1.0.0
         description: Fix tests
@@ -30,15 +34,13 @@ def test_builder_skill_registry(tmp_path):
           abstract: Fix a test.
           summary: Fix it.
           full: SKILL.md
-    """))
+    """)
+    )
     (d / "SKILL.md").write_text("# Fix\nDo it.")
     with patch("mori.agent.AnthropicAdapter") as M:
         M.return_value = AsyncMock()
         agent = (
-            Mori.builder()
-            .model("anthropic", api_key="test")
-            .skill_registry(str(tmp_path))
-            .build()
+            Mori.builder().model("anthropic", api_key="test").skill_registry(str(tmp_path)).build()
         )
         assert agent.skills is not None
 
@@ -71,9 +73,11 @@ def test_builder_no_budget():
 
 def test_builder_order_independent(tmp_path):
     import textwrap
+
     d = tmp_path / "s"
     d.mkdir()
-    (d / "manifest.yaml").write_text(textwrap.dedent("""\
+    (d / "manifest.yaml").write_text(
+        textwrap.dedent("""\
         name: s
         version: 1.0.0
         description: S
@@ -86,16 +90,27 @@ def test_builder_order_independent(tmp_path):
           abstract: Short abstract.
           summary: Summary.
           full: SKILL.md
-    """))
+    """)
+    )
     (d / "SKILL.md").write_text("# S")
     with patch("mori.agent.AnthropicAdapter") as M:
         M.return_value = AsyncMock()
         # skill_registry before budget
-        a1 = (Mori.builder().model("anthropic", api_key="x")
-              .skill_registry(str(tmp_path)).budget(total_context_tokens=50_000).build())
+        a1 = (
+            Mori.builder()
+            .model("anthropic", api_key="x")
+            .skill_registry(str(tmp_path))
+            .budget(total_context_tokens=50_000)
+            .build()
+        )
         # budget before skill_registry
-        a2 = (Mori.builder().model("anthropic", api_key="x")
-              .budget(total_context_tokens=50_000).skill_registry(str(tmp_path)).build())
+        a2 = (
+            Mori.builder()
+            .model("anthropic", api_key="x")
+            .budget(total_context_tokens=50_000)
+            .skill_registry(str(tmp_path))
+            .build()
+        )
         assert a1.skills is not None and a1.budget is not None
         assert a2.skills is not None and a2.budget is not None
 
@@ -103,9 +118,11 @@ def test_builder_order_independent(tmp_path):
 @pytest.mark.asyncio
 async def test_agent_run_with_skills_and_budget(tmp_path):
     import textwrap
+
     d = tmp_path / "bug-fix"
     d.mkdir()
-    (d / "manifest.yaml").write_text(textwrap.dedent("""\
+    (d / "manifest.yaml").write_text(
+        textwrap.dedent("""\
         name: bug-fix
         version: 1.0.0
         description: Fix
@@ -118,7 +135,8 @@ async def test_agent_run_with_skills_and_budget(tmp_path):
           abstract: Fix a failing test.
           summary: Trace and patch.
           full: SKILL.md
-    """))
+    """)
+    )
     (d / "SKILL.md").write_text("# Fix\nDo it.")
     with patch("mori.agent.AnthropicAdapter") as M:
         mock = AsyncMock()

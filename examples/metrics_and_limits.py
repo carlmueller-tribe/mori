@@ -18,8 +18,8 @@ load_dotenv()
 
 from mori import Mori
 
-
 # ── Tools (one is unreliable) ────────────────────────────────
+
 
 def add(a: int, b: int) -> int:
     """Add two numbers."""
@@ -49,8 +49,7 @@ async def main():
     )
 
     result = await agent.run(
-        "Add 1+1, then add 2+2, then add 3+3, then add 4+4, then add 5+5. "
-        "Report all results."
+        "Add 1+1, then add 2+2, then add 3+3, then add 4+4, then add 5+5. " "Report all results."
     )
 
     print(f"\n  Status: {result.status}")
@@ -60,7 +59,7 @@ async def main():
     # Check metrics
     metrics = agent.tools.get_metrics("native:add")
     if metrics:
-        print(f"\n  Tool 'add' metrics:")
+        print("\n  Tool 'add' metrics:")
         print(f"    Calls: {metrics.total_calls}")
         print(f"    Errors: {metrics.total_errors}")
         print(f"    Avg latency: {metrics.avg_latency_ms:.2f}ms")

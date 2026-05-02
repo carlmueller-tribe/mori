@@ -1,5 +1,7 @@
 """MCPClient — native MCP client speaking JSON-RPC 2.0."""
+
 from __future__ import annotations
+
 import secrets
 import time
 from typing import Any
@@ -10,11 +12,21 @@ except ImportError:
     httpx = None  # type: ignore[assignment]
 
 from mori.protocols.mcp.schema_cache import SchemaCache
-from mori.types import AuthConfig, HealthStatus, ServerUnavailable, ToolId, ToolResult, ToolSource, ToolSpec
+from mori.types import (
+    AuthConfig,
+    HealthStatus,
+    ServerUnavailable,
+    ToolId,
+    ToolResult,
+    ToolSource,
+    ToolSpec,
+)
 
 
 class MCPClient:
-    def __init__(self, name: str, url: str, transport: str = "sse", auth: AuthConfig | None = None) -> None:
+    def __init__(
+        self, name: str, url: str, transport: str = "sse", auth: AuthConfig | None = None
+    ) -> None:  # noqa: E501
         self.name = name
         self._url = url
         self._transport = transport
@@ -60,18 +72,43 @@ class MCPClient:
             content_blocks = result.get("content", [])
             text_parts = [b.get("text", "") for b in content_blocks if b.get("type") == "text"]
             content = "\n".join(text_parts) if text_parts else str(result)
-            return ToolResult(tool_name=tool_name, call_id="", success=True, content=content, latency_ms=elapsed_ms, metadata={"server": self.name})
+            return ToolResult(
+                tool_name=tool_name,
+                call_id="",
+                success=True,
+                content=content,
+                latency_ms=elapsed_ms,
+                metadata={"server": self.name},
+            )  # noqa: E501
         except Exception as exc:
             elapsed_ms = (time.monotonic() - start) * 1000
-            return ToolResult(tool_name=tool_name, call_id="", success=False, content="", error=str(exc), latency_ms=elapsed_ms, metadata={"server": self.name})
+            return ToolResult(
+                tool_name=tool_name,
+                call_id="",
+                success=False,
+                content="",
+                error=str(exc),
+                latency_ms=elapsed_ms,
+                metadata={"server": self.name},
+            )  # noqa: E501
 
     async def health_check(self) -> HealthStatus:
         start = time.monotonic()
         try:
             await self._send_rpc("ping", {})
-            return HealthStatus(healthy=True, component=self.name, message="ok", latency_ms=(time.monotonic() - start) * 1000)
+            return HealthStatus(
+                healthy=True,
+                component=self.name,
+                message="ok",
+                latency_ms=(time.monotonic() - start) * 1000,
+            )  # noqa: E501
         except Exception as exc:
-            return HealthStatus(healthy=False, component=self.name, message=str(exc), latency_ms=(time.monotonic() - start) * 1000)
+            return HealthStatus(
+                healthy=False,
+                component=self.name,
+                message=str(exc),
+                latency_ms=(time.monotonic() - start) * 1000,
+            )  # noqa: E501
 
     async def close(self) -> None:
         if self._client:
@@ -86,6 +123,8 @@ class MCPClient:
         response.raise_for_status()
         data = response.json()
         if "error" in data:
-            raise ServerUnavailable(f"MCP error: {data['error'].get('message', 'unknown')}", details=data["error"])
+            raise ServerUnavailable(
+                f"MCP error: {data['error'].get('message', 'unknown')}", details=data["error"]
+            )  # noqa: E501
         result: dict[str, Any] = data.get("result", {})
         return result

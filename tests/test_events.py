@@ -1,30 +1,29 @@
 """Tests for observability event types."""
 
-from datetime import datetime, timezone
-from typing import Protocol, runtime_checkable
+from datetime import UTC, datetime
 
 from mori.observability.events import (
+    BoundViolationEvent,
+    EventSink,
     MoriEvent,
-    RunStartEvent,
+    ObservabilityConfig,
     RunEndEvent,
-    StepStartEvent,
+    RunStartEvent,
+    RunSummary,
+    SpanContext,
     StepEndEvent,
+    StepStartEvent,
     ToolInvokeEvent,
     ToolResultEvent,
-    BoundViolationEvent,
-    SpanContext,
-    EventSink,
-    ObservabilityConfig,
-    RunSummary,
 )
-from mori.types import RunId, RunStatus, StepId, StepOutcome, Phase, ToolSource, TraceId
+from mori.types import Phase, RunId, RunStatus, StepId, StepOutcome, ToolSource, TraceId
 
 
 def test_mori_event_base():
     e = MoriEvent(
         event_id="evt_1",
         event_type="test",
-        timestamp=datetime.now(timezone.utc),
+        timestamp=datetime.now(UTC),
         run_id=RunId("run_1"),
     )
     assert e.event_type == "test"
@@ -37,7 +36,7 @@ def test_mori_event_base():
 def test_run_start_event():
     e = RunStartEvent(
         event_id="evt_1",
-        timestamp=datetime.now(timezone.utc),
+        timestamp=datetime.now(UTC),
         run_id=RunId("run_1"),
         task="test task",
         config={"max_steps": 50},
@@ -49,7 +48,7 @@ def test_run_start_event():
 def test_run_end_event():
     e = RunEndEvent(
         event_id="evt_2",
-        timestamp=datetime.now(timezone.utc),
+        timestamp=datetime.now(UTC),
         run_id=RunId("run_1"),
         status=RunStatus.COMPLETED,
         total_steps=3,
@@ -64,7 +63,7 @@ def test_run_end_event():
 def test_step_start_event():
     e = StepStartEvent(
         event_id="evt_3",
-        timestamp=datetime.now(timezone.utc),
+        timestamp=datetime.now(UTC),
         run_id=RunId("run_1"),
         step_id=StepId("step_1"),
         step_number=1,
@@ -77,7 +76,7 @@ def test_step_start_event():
 def test_step_end_event():
     e = StepEndEvent(
         event_id="evt_4",
-        timestamp=datetime.now(timezone.utc),
+        timestamp=datetime.now(UTC),
         run_id=RunId("run_1"),
         step_id=StepId("step_1"),
         step_number=1,
@@ -93,7 +92,7 @@ def test_step_end_event():
 def test_tool_invoke_event():
     e = ToolInvokeEvent(
         event_id="evt_5",
-        timestamp=datetime.now(timezone.utc),
+        timestamp=datetime.now(UTC),
         run_id=RunId("run_1"),
         tool_name="add",
         source=ToolSource.NATIVE,
@@ -106,7 +105,7 @@ def test_tool_invoke_event():
 def test_tool_result_event():
     e = ToolResultEvent(
         event_id="evt_6",
-        timestamp=datetime.now(timezone.utc),
+        timestamp=datetime.now(UTC),
         run_id=RunId("run_1"),
         tool_name="add",
         success=True,
@@ -119,7 +118,7 @@ def test_tool_result_event():
 def test_bound_violation_event():
     e = BoundViolationEvent(
         event_id="evt_7",
-        timestamp=datetime.now(timezone.utc),
+        timestamp=datetime.now(UTC),
         run_id=RunId("run_1"),
         bound_name="max_steps",
         current_value=51.0,
@@ -133,8 +132,8 @@ def test_span_context():
         trace_id=TraceId("trace_1"),
         span_id="span_1",
         name="plan_phase",
-        start_time=datetime(2026, 1, 1, tzinfo=timezone.utc),
-        end_time=datetime(2026, 1, 1, 0, 0, 1, tzinfo=timezone.utc),
+        start_time=datetime(2026, 1, 1, tzinfo=UTC),
+        end_time=datetime(2026, 1, 1, 0, 0, 1, tzinfo=UTC),
     )
     assert s.duration_ms is not None
     assert abs(s.duration_ms - 1000.0) < 1.0
@@ -145,7 +144,7 @@ def test_span_context_no_end():
         trace_id=TraceId("trace_1"),
         span_id="span_1",
         name="ongoing",
-        start_time=datetime.now(timezone.utc),
+        start_time=datetime.now(UTC),
     )
     assert s.duration_ms is None
 
@@ -153,7 +152,7 @@ def test_span_context_no_end():
 def test_event_json_roundtrip():
     e = ToolInvokeEvent(
         event_id="evt_1",
-        timestamp=datetime.now(timezone.utc),
+        timestamp=datetime.now(UTC),
         run_id=RunId("run_1"),
         tool_name="search",
         source=ToolSource.CLI,
@@ -166,7 +165,11 @@ def test_event_json_roundtrip():
 
 
 def test_event_sink_is_protocol():
-    assert hasattr(EventSink, "__protocol_attrs__") or callable(getattr(EventSink, "_is_protocol", None)) or hasattr(EventSink, "_is_runtime_protocol")
+    assert (
+        hasattr(EventSink, "__protocol_attrs__")
+        or callable(getattr(EventSink, "_is_protocol", None))
+        or hasattr(EventSink, "_is_runtime_protocol")
+    )
 
 
 def test_observability_config_defaults():

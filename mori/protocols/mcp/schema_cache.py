@@ -1,6 +1,9 @@
 """Schema cache with TTL for MCP tool discovery."""
+
 from __future__ import annotations
+
 import time
+
 from mori.types import ToolSpec
 
 

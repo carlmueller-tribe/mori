@@ -1,16 +1,13 @@
 """Tests for ControlBounds — resource limits and retry logic."""
 
-import time
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 
 from mori.control.bounds import (
-    BoundCheckResult,
     ControlBounds,
     ControlConfig,
-    RetryDecision,
 )
 from mori.runtime.state import MoriState
-from mori.types import Message, RunId, RunStatus, ThreadId
+from mori.types import RunId, RunStatus, ThreadId
 
 
 def _make_state(**overrides) -> MoriState:
@@ -19,8 +16,8 @@ def _make_state(**overrides) -> MoriState:
         "thread_id": ThreadId("thread_test"),
         "task": "test",
         "status": RunStatus.RUNNING,
-        "started_at": datetime.now(timezone.utc),
-        "last_progress_at": datetime.now(timezone.utc),
+        "started_at": datetime.now(UTC),
+        "last_progress_at": datetime.now(UTC),
     }
     defaults.update(overrides)
     return MoriState(**defaults)
@@ -61,7 +58,7 @@ def test_check_bounds_token_limit():
 def test_check_bounds_run_timeout():
     bounds = ControlBounds(config=ControlConfig(run_timeout_sec=0.001))
     state = _make_state(
-        started_at=datetime(2020, 1, 1, tzinfo=timezone.utc),
+        started_at=datetime(2020, 1, 1, tzinfo=UTC),
     )
     result = bounds.check_bounds(state)
     assert result.ok is False
@@ -71,7 +68,7 @@ def test_check_bounds_run_timeout():
 def test_check_bounds_idle_timeout():
     bounds = ControlBounds(config=ControlConfig(idle_timeout_sec=0.001))
     state = _make_state(
-        last_progress_at=datetime(2020, 1, 1, tzinfo=timezone.utc),
+        last_progress_at=datetime(2020, 1, 1, tzinfo=UTC),
     )
     result = bounds.check_bounds(state)
     assert result.ok is False
@@ -108,17 +105,19 @@ def test_should_retry_exhausted():
 
 
 def test_should_retry_backoff_capped():
-    bounds = ControlBounds(config=ControlConfig(max_retries_per_tool=20, retry_backoff_base_sec=1.0))
+    bounds = ControlBounds(
+        config=ControlConfig(max_retries_per_tool=20, retry_backoff_base_sec=1.0)
+    )
     decision = bounds.should_retry(ValueError("fail"), attempt=10)
     assert decision.wait_sec <= 60.0
 
 
 def test_record_progress():
     bounds = ControlBounds(config=ControlConfig(idle_timeout_sec=1000))
-    state = _make_state(last_progress_at=datetime(2020, 1, 1, tzinfo=timezone.utc))
+    state = _make_state(last_progress_at=datetime(2020, 1, 1, tzinfo=UTC))
     result = bounds.check_bounds(state)
     assert result.ok is False
     bounds.record_progress()
-    state.last_progress_at = datetime.now(timezone.utc)
+    state.last_progress_at = datetime.now(UTC)
     result2 = bounds.check_bounds(state)
     assert result2.ok is True

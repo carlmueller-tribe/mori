@@ -1,16 +1,23 @@
 """SQLiteBackend — sqlite3 + numpy cosine similarity."""
+
 from __future__ import annotations
-import json, sqlite3
-from datetime import datetime, timezone
+
+import json
+import sqlite3
+from datetime import UTC, datetime
 from typing import Any, Literal
+
 import numpy as np
+
 from mori.types import MemoryFilters, MemoryLayer, MemoryRecord, MemoryRecordId
+
 
 def _cosine_similarity(a: list[float], b: list[float]) -> float:
     va, vb = np.array(a, dtype=np.float32), np.array(b, dtype=np.float32)
     dot = np.dot(va, vb)
     norm = np.linalg.norm(va) * np.linalg.norm(vb)
     return float(dot / norm) if norm > 0 else 0.0
+
 
 class SQLiteBackend:
     def __init__(self, path: str) -> None:
@@ -28,21 +35,42 @@ class SQLiteBackend:
 
     def _to_row(self, r: MemoryRecord) -> tuple[Any, ...]:
         emb = np.array(r.embedding, dtype=np.float32).tobytes() if r.embedding else None
-        return (r.record_id, r.layer.value, r.content, json.dumps(r.metadata) if r.metadata else None,
-            r.created_at.isoformat(), r.updated_at.isoformat(), r.ttl_seconds, r.provenance, r.confidence, emb)
+        return (
+            r.record_id,
+            r.layer.value,
+            r.content,
+            json.dumps(r.metadata) if r.metadata else None,  # noqa: E501
+            r.created_at.isoformat(),
+            r.updated_at.isoformat(),
+            r.ttl_seconds,
+            r.provenance,
+            r.confidence,
+            emb,
+        )  # noqa: E501
 
     def _from_row(self, row: tuple[Any, ...]) -> MemoryRecord:
         emb = np.frombuffer(row[9], dtype=np.float32).tolist() if row[9] else []
-        return MemoryRecord(record_id=MemoryRecordId(row[0]), layer=MemoryLayer(row[1]), content=row[2],
-            metadata=json.loads(row[3]) if row[3] else {}, created_at=datetime.fromisoformat(row[4]),
-            updated_at=datetime.fromisoformat(row[5]), ttl_seconds=row[6], provenance=row[7],
-            confidence=row[8], embedding=emb)
+        return MemoryRecord(
+            record_id=MemoryRecordId(row[0]),
+            layer=MemoryLayer(row[1]),
+            content=row[2],  # noqa: E501
+            metadata=json.loads(row[3]) if row[3] else {},
+            created_at=datetime.fromisoformat(row[4]),  # noqa: E501
+            updated_at=datetime.fromisoformat(row[5]),
+            ttl_seconds=row[6],
+            provenance=row[7],
+            confidence=row[8],
+            embedding=emb,
+        )
 
     async def insert(self, records: list[MemoryRecord]) -> list[MemoryRecordId]:
         assert self._conn
         ids = []
         for r in records:
-            self._conn.execute("INSERT OR REPLACE INTO memory_records VALUES (?,?,?,?,?,?,?,?,?,?)", self._to_row(r))
+            self._conn.execute(
+                "INSERT OR REPLACE INTO memory_records VALUES (?,?,?,?,?,?,?,?,?,?)",
+                self._to_row(r),
+            )  # noqa: E501
             ids.append(r.record_id)
         self._conn.commit()
         return ids
@@ -50,19 +78,24 @@ class SQLiteBackend:
     async def get(self, record_ids: list[MemoryRecordId]) -> list[MemoryRecord]:
         assert self._conn
         ph = ",".join("?" for _ in record_ids)
-        rows = self._conn.execute(f"SELECT * FROM memory_records WHERE record_id IN ({ph})",
-            [str(r) for r in record_ids]).fetchall()
+        rows = self._conn.execute(
+            f"SELECT * FROM memory_records WHERE record_id IN ({ph})", [str(r) for r in record_ids]
+        ).fetchall()
         return [self._from_row(r) for r in rows]
 
     async def update(self, record_id: MemoryRecordId, updates: dict[str, Any]) -> MemoryRecord:
         assert self._conn
         records = await self.get([record_id])
-        if not records: raise KeyError(f"Record {record_id} not found")
+        if not records:
+            raise KeyError(f"Record {record_id} not found")
         data = records[0].model_dump()
         data.update(updates)
-        data["updated_at"] = datetime.now(timezone.utc)
+        data["updated_at"] = datetime.now(UTC)
         updated = MemoryRecord(**data)
-        self._conn.execute("INSERT OR REPLACE INTO memory_records VALUES (?,?,?,?,?,?,?,?,?,?)", self._to_row(updated))
+        self._conn.execute(
+            "INSERT OR REPLACE INTO memory_records VALUES (?,?,?,?,?,?,?,?,?,?)",
+            self._to_row(updated),
+        )  # noqa: E501
         self._conn.commit()
         return updated
 
@@ -70,19 +103,32 @@ class SQLiteBackend:
         assert self._conn
         count = 0
         for rid in record_ids:
-            count += self._conn.execute("DELETE FROM memory_records WHERE record_id=?", (str(rid),)).rowcount
+            count += self._conn.execute(
+                "DELETE FROM memory_records WHERE record_id=?", (str(rid),)
+            ).rowcount  # noqa: E501
         self._conn.commit()
         return count
 
-    async def search(self, embedding: list[float], layer: MemoryLayer | None = None,
-        limit: int = 20, filters: MemoryFilters | None = None) -> list[tuple[MemoryRecord, float]]:
+    async def search(
+        self,
+        embedding: list[float],
+        layer: MemoryLayer | None = None,
+        limit: int = 20,
+        filters: MemoryFilters | None = None,
+    ) -> list[tuple[MemoryRecord, float]]:
         assert self._conn
         q: str = "SELECT * FROM memory_records WHERE embedding IS NOT NULL"
         p: list[Any] = []
-        if layer: q += " AND layer=?"; p.append(layer.value)
+        if layer:
+            q += " AND layer=?"
+            p.append(layer.value)
         if filters:
-            if filters.min_confidence is not None: q += " AND confidence>=?"; p.append(filters.min_confidence)
-            if filters.provenance is not None: q += " AND provenance=?"; p.append(filters.provenance)
+            if filters.min_confidence is not None:
+                q += " AND confidence>=?"
+                p.append(filters.min_confidence)
+            if filters.provenance is not None:
+                q += " AND provenance=?"
+                p.append(filters.provenance)
         rows = self._conn.execute(q, p).fetchall()
         scored = []
         for row in rows:
@@ -92,19 +138,32 @@ class SQLiteBackend:
         scored.sort(key=lambda x: x[1], reverse=True)
         return scored[:limit]
 
-    async def list_records(self, layer: MemoryLayer, limit: int = 100, offset: int = 0,
-        order_by: Literal["created_at", "updated_at", "confidence"] = "created_at") -> list[MemoryRecord]:
+    async def list_records(
+        self,
+        layer: MemoryLayer,
+        limit: int = 100,
+        offset: int = 0,
+        order_by: Literal["created_at", "updated_at", "confidence"] = "created_at",
+    ) -> list[MemoryRecord]:  # noqa: E501
         assert self._conn
         direction = "DESC" if order_by == "confidence" else "ASC"
-        rows = self._conn.execute(f"SELECT * FROM memory_records WHERE layer=? ORDER BY {order_by} {direction} LIMIT ? OFFSET ?",
-            (layer.value, limit, offset)).fetchall()
+        rows = self._conn.execute(
+            f"SELECT * FROM memory_records WHERE layer=? ORDER BY {order_by} {direction} LIMIT ? OFFSET ?",  # noqa: E501
+            (layer.value, limit, offset),
+        ).fetchall()
         return [self._from_row(r) for r in rows]
 
     async def count(self, layer: MemoryLayer | None = None) -> int:
         assert self._conn
         if layer is None:
             return int(self._conn.execute("SELECT COUNT(*) FROM memory_records").fetchone()[0])
-        return int(self._conn.execute("SELECT COUNT(*) FROM memory_records WHERE layer=?", (layer.value,)).fetchone()[0])
+        return int(
+            self._conn.execute(
+                "SELECT COUNT(*) FROM memory_records WHERE layer=?", (layer.value,)
+            ).fetchone()[0]
+        )  # noqa: E501
 
     async def close(self) -> None:
-        if self._conn: self._conn.close(); self._conn = None
+        if self._conn:
+            self._conn.close()
+            self._conn = None

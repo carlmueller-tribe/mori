@@ -2,9 +2,10 @@
 
 from __future__ import annotations
 
+from collections.abc import Callable
 from datetime import datetime
-from enum import Enum
-from typing import Any, Callable, Literal, NewType
+from enum import StrEnum
+from typing import Any, Literal, NewType
 
 from pydantic import BaseModel, Field
 
@@ -23,7 +24,8 @@ ThreadId = NewType("ThreadId", str)
 
 # ── Enumerations ─────────────────────────────────────────────
 
-class Phase(str, Enum):
+
+class Phase(StrEnum):
     RETRIEVE = "retrieve"
     PLAN = "plan"
     VALIDATE = "validate"
@@ -33,7 +35,7 @@ class Phase(str, Enum):
     UPDATE = "update"
 
 
-class RunStatus(str, Enum):
+class RunStatus(StrEnum):
     PENDING = "pending"
     RUNNING = "running"
     PAUSED = "paused"
@@ -43,7 +45,7 @@ class RunStatus(str, Enum):
     CANCELLED = "cancelled"
 
 
-class StepOutcome(str, Enum):
+class StepOutcome(StrEnum):
     SUCCESS = "success"
     FAILURE = "failure"
     RETRY = "retry"
@@ -51,26 +53,26 @@ class StepOutcome(str, Enum):
     SKIP = "skip"
 
 
-class MemoryLayer(str, Enum):
+class MemoryLayer(StrEnum):
     WORKING = "working"
     EPISODIC = "episodic"
     SEMANTIC = "semantic"
     PERSONALIZED = "personalized"
 
 
-class DisclosureLevel(str, Enum):
+class DisclosureLevel(StrEnum):
     ABSTRACT = "abstract"
     SUMMARY = "summary"
     FULL = "full"
 
 
-class PermissionDecision(str, Enum):
+class PermissionDecision(StrEnum):
     ALLOW = "allow"
     DENY = "deny"
     ESCALATE = "escalate"
 
 
-class ToolSource(str, Enum):
+class ToolSource(StrEnum):
     NATIVE = "native"
     CLI = "cli"
     MCP = "mcp"
@@ -78,7 +80,7 @@ class ToolSource(str, Enum):
     OPENAPI = "openapi"
 
 
-class Priority(str, Enum):
+class Priority(StrEnum):
     LOW = "low"
     MEDIUM = "medium"
     HIGH = "high"
@@ -86,6 +88,7 @@ class Priority(str, Enum):
 
 
 # ── Base Models ──────────────────────────────────────────────
+
 
 class MoriModel(BaseModel):
     model_config = {"frozen": False, "extra": "forbid"}
@@ -96,6 +99,7 @@ class ImmutableModel(BaseModel):
 
 
 # ── Token Budget ─────────────────────────────────────────────
+
 
 class TokenBudget(MoriModel):
     allocated: int
@@ -111,6 +115,7 @@ class TokenBudget(MoriModel):
 
 
 # ── Message Types ────────────────────────────────────────────
+
 
 class ToolCall(MoriModel):
     id: str
@@ -136,6 +141,7 @@ class TokenUsage(ImmutableModel):
 
 
 # ── Model Interaction Types ──────────────────────────────────
+
 
 class ToolSpec(MoriModel):
     tool_id: ToolId
@@ -165,6 +171,7 @@ class ModelResponse(MoriModel):
 
 # ── Tool Types ───────────────────────────────────────────────
 
+
 class ToolResult(MoriModel):
     tool_name: str
     call_id: str
@@ -183,6 +190,7 @@ class RegisteredTool(MoriModel):
 
 # ── Health & Auth ────────────────────────────────────────────
 
+
 class HealthStatus(MoriModel):
     healthy: bool
     component: str
@@ -199,21 +207,28 @@ class AuthConfig(MoriModel):
 
 # ── Memory Config & Lifecycle ────────────────────────────────
 
+
 class MemoryConfig(MoriModel):
-    default_ttl_seconds: dict[MemoryLayer, int | None] = Field(default_factory=lambda: {
-        MemoryLayer.WORKING: 3600,
-        MemoryLayer.EPISODIC: None,
-        MemoryLayer.SEMANTIC: None,
-        MemoryLayer.PERSONALIZED: None,
-    })
-    max_records_per_layer: dict[MemoryLayer, int] = Field(default_factory=lambda: {
-        MemoryLayer.WORKING: 200,
-        MemoryLayer.EPISODIC: 10_000,
-        MemoryLayer.SEMANTIC: 50_000,
-        MemoryLayer.PERSONALIZED: 5_000,
-    })
+    default_ttl_seconds: dict[MemoryLayer, int | None] = Field(
+        default_factory=lambda: {
+            MemoryLayer.WORKING: 3600,
+            MemoryLayer.EPISODIC: None,
+            MemoryLayer.SEMANTIC: None,
+            MemoryLayer.PERSONALIZED: None,
+        }
+    )
+    max_records_per_layer: dict[MemoryLayer, int] = Field(
+        default_factory=lambda: {
+            MemoryLayer.WORKING: 200,
+            MemoryLayer.EPISODIC: 10_000,
+            MemoryLayer.SEMANTIC: 50_000,
+            MemoryLayer.PERSONALIZED: 5_000,
+        }
+    )
     deduplication_threshold: float = 0.95
-    conflict_resolution: Literal["highest_confidence", "most_recent", "keep_all"] = "highest_confidence"
+    conflict_resolution: Literal["highest_confidence", "most_recent", "keep_all"] = (
+        "highest_confidence"  # noqa: E501
+    )
     embedding_dimensions: int = 1536
     auto_forget_interval_sec: float = 300.0
 
@@ -250,6 +265,7 @@ class MemoryStats(MoriModel):
 
 # ── Memory Record ────────────────────────────────────────────
 
+
 class MemoryRecord(MoriModel):
     record_id: MemoryRecordId
     layer: MemoryLayer
@@ -279,6 +295,7 @@ class WriteReceipt(MoriModel):
 
 
 # ── Error Hierarchy ──────────────────────────────────────────
+
 
 class MoriError(Exception):
     def __init__(self, message: str, details: dict[str, Any] | None = None):

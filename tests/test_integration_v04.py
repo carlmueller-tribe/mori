@@ -1,6 +1,9 @@
 """v0.4 exit test — skills discovery and budget rebalance events are emitted."""
+
 from unittest.mock import AsyncMock
+
 import pytest
+
 from mori import Mori
 from mori.types import Message, ModelResponse, RunStatus, TokenUsage
 
@@ -16,6 +19,7 @@ def _text_response(text):
 @pytest.fixture
 def skills_root(tmp_path):
     import textwrap
+
     skills = {
         "bug-fix": (
             textwrap.dedent("""\
@@ -96,14 +100,22 @@ async def test_exit_test_skill_discover_and_budget_rebalance(skills_root):
 
     class Sink:
         realtime = True
-        async def write(self, e): traces.append(e.model_dump())
-        async def write_batch(self, es): traces.extend(e.model_dump() for e in es)
-        async def flush(self): pass
-        async def close(self): pass
+
+        async def write(self, e):
+            traces.append(e.model_dump())
+
+        async def write_batch(self, es):
+            traces.extend(e.model_dump() for e in es)
+
+        async def flush(self):
+            pass
+
+        async def close(self):
+            pass
 
     with pytest.MonkeyPatch().context() as mp:
-        import mori.agent as agent_mod
         from unittest.mock import MagicMock
+
         mock_adapter = AsyncMock()
         mock_adapter.invoke = AsyncMock(
             return_value=_text_response("I found and fixed the failing test.")
@@ -124,6 +136,7 @@ async def test_exit_test_skill_discover_and_budget_rebalance(skills_root):
         # Inject our trace sink directly
         from mori.observability.engine import ObservabilityEngine
         from mori.observability.events import ObservabilityConfig
+
         agent._obs = ObservabilityEngine(sinks=[Sink()], config=ObservabilityConfig())
         agent._loop._obs = agent._obs
 
@@ -136,9 +149,9 @@ async def test_exit_test_skill_discover_and_budget_rebalance(skills_root):
     budget_events = [e for e in traces if e["event_type"] == "budget.rebalance"]
 
     assert len(skill_events) > 0, "No skill.discover events emitted"
-    assert skill_events[0]["top_match_name"] == "bug-fix", (
-        f"Expected top_match_name='bug-fix', got {skill_events[0].get('top_match_name')!r}"
-    )
+    assert (
+        skill_events[0]["top_match_name"] == "bug-fix"
+    ), f"Expected top_match_name='bug-fix', got {skill_events[0].get('top_match_name')!r}"
     assert len(budget_events) > 0, "No budget.rebalance events emitted"
 
     await agent.close()

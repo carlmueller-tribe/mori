@@ -1,6 +1,5 @@
 """Tests for AgentLoop — model calls are mocked."""
 
-from datetime import datetime, timezone
 from unittest.mock import AsyncMock
 
 import pytest
@@ -11,12 +10,10 @@ from mori.runtime.loop import AgentLoop
 from mori.tools.registry import ToolRegistry
 from mori.types import (
     Message,
-    ModelRequest,
     ModelResponse,
     RunStatus,
-    StepOutcome,
-    ToolCall,
     TokenUsage,
+    ToolCall,
 )
 
 
@@ -115,9 +112,7 @@ async def test_multiple_tool_calls(mock_model, registry_with_add):
 
 async def test_step_limit(mock_model, registry_with_add):
     """Loop terminates when step limit is hit."""
-    mock_model.invoke = AsyncMock(
-        return_value=_tool_response("call_n", "add", {"a": 1, "b": 1})
-    )
+    mock_model.invoke = AsyncMock(return_value=_tool_response("call_n", "add", {"a": 1, "b": 1}))
 
     control = ControlBounds(config=ControlConfig(max_steps=3))
     loop = AgentLoop(model=mock_model, tools=registry_with_add, control=control)
@@ -182,9 +177,9 @@ async def test_messages_include_full_conversation(mock_model, registry_with_add)
     result = await loop.run("Add 1+2")
 
     roles = [m.role for m in result.messages]
-    assert roles[0] == "user"       # Initial task
+    assert roles[0] == "user"  # Initial task
     assert roles[1] == "assistant"  # Tool call
-    assert roles[2] == "tool"       # Tool result
+    assert roles[2] == "tool"  # Tool result
     assert roles[3] == "assistant"  # Final answer
 
 
@@ -201,7 +196,9 @@ async def test_run_returns_duration(mock_model, registry_with_add):
 async def test_token_limit_terminates(mock_model, registry_with_add):
     """Loop terminates when token limit is hit."""
     mock_model.invoke = AsyncMock(
-        return_value=_tool_response("call_n", "add", {"a": 1, "b": 1}, input_tokens=600_000, output_tokens=400_000)
+        return_value=_tool_response(
+            "call_n", "add", {"a": 1, "b": 1}, input_tokens=600_000, output_tokens=400_000
+        )
     )
 
     control = ControlBounds(config=ControlConfig(max_total_tokens=2_000_000))

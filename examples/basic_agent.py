@@ -15,8 +15,8 @@ load_dotenv()
 
 from mori import Mori
 
-
 # ── Tools ────────────────────────────────────────────────────
+
 
 def add(a: int, b: int) -> int:
     """Add two numbers."""
@@ -49,6 +49,7 @@ def lookup_price(item: str) -> str:
 
 # ── Agent ────────────────────────────────────────────────────
 
+
 async def main():
     agent = (
         Mori.builder()
@@ -76,8 +77,10 @@ async def main():
         result = await agent.run(task)
 
         print(f"Answer: {result.final_output}")
-        print(f"Steps: {result.total_steps} | Tool calls: {result.total_tool_calls} | "
-              f"Tokens: {result.total_usage.total}")
+        print(
+            f"Steps: {result.total_steps} | Tool calls: {result.total_tool_calls} | "
+            f"Tokens: {result.total_usage.total}"
+        )
 
 
 if __name__ == "__main__":

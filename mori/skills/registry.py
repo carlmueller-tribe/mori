@@ -1,8 +1,11 @@
 """FilesystemRegistry and CompositeRegistry for skill discovery."""
+
 from __future__ import annotations
+
 import logging
 from pathlib import Path
 from typing import Protocol, runtime_checkable
+
 from mori.skills.parser import parse_manifest
 from mori.skills.types import SkillManifest, SkillValidationError
 

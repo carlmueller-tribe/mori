@@ -1,16 +1,17 @@
-import pytest
-from pathlib import Path
 from unittest.mock import AsyncMock, patch
+
+import pytest
 
 from mori import Mori
 from mori.permission.types import Identity, IdentityType
-from mori.types import Message, ModelResponse, RunStatus, ThreadId, TokenUsage, ToolCall
+from mori.types import Message, ModelResponse, RunStatus, TokenUsage, ToolCall
 
 
 def _text(text):
     return ModelResponse(
         message=Message(role="assistant", content=text),
-        usage=TokenUsage(input_tokens=10, output_tokens=5), stop_reason="end_turn",
+        usage=TokenUsage(input_tokens=10, output_tokens=5),
+        stop_reason="end_turn",
     )
 
 
@@ -20,7 +21,11 @@ def test_builder_identity():
         agent = (
             Mori.builder()
             .model("anthropic", api_key="test")
-            .identity(Identity(id="agent:bot", name="bot", type=IdentityType.AGENT, groups=["engineering"]))
+            .identity(
+                Identity(
+                    id="agent:bot", name="bot", type=IdentityType.AGENT, groups=["engineering"]
+                )
+            )
             .build()
         )
         assert agent.identity is not None
@@ -62,9 +67,9 @@ def test_builder_policy_file(tmp_path):
     policy = tmp_path / "policy.yaml"
     policy.write_text(
         "rules:\n"
-        "  - resource: {type: tool, pattern: \"*\"}\n"
-        "    identity: {match: any, value: \"*\"}\n"
-        "    permissions: \"r-x\"\n"
+        '  - resource: {type: tool, pattern: "*"}\n'
+        '    identity: {match: any, value: "*"}\n'
+        '    permissions: "r-x"\n'
         "    effect: allow\n"
     )
     with patch("mori.agent.AnthropicAdapter") as M:
@@ -92,9 +97,9 @@ async def test_mori_resume(tmp_path):
     policy = tmp_path / "policy.yaml"
     policy.write_text(
         "rules:\n"
-        "  - resource: {type: tool, pattern: \"deploy_*\"}\n"
-        "    identity: {match: any, value: \"*\"}\n"
-        "    permissions: \"--x\"\n"
+        '  - resource: {type: tool, pattern: "deploy_*"}\n'
+        '    identity: {match: any, value: "*"}\n'
+        '    permissions: "--x"\n'
         "    effect: escalate\n"
         "    priority: 10\n"
     )
@@ -103,25 +108,43 @@ async def test_mori_resume(tmp_path):
         mock_adapter.model_id = "test"
         mock_adapter.supports_tool_use = True
         mock_adapter.max_context_tokens = 100000
-        mock_adapter.invoke = AsyncMock(side_effect=[
-            ModelResponse(
-                message=Message(role="assistant", content="",
-                    tool_calls=[ToolCall(id="c1", name="deploy_prod", arguments={"version": "1.2.3"})]),
-                usage=TokenUsage(input_tokens=10, output_tokens=5), stop_reason="tool_use",
-            ),
-            ModelResponse(
-                message=Message(role="assistant", content="",
-                    tool_calls=[ToolCall(id="c2", name="deploy_prod", arguments={"version": "1.2.3"})]),
-                usage=TokenUsage(input_tokens=10, output_tokens=5), stop_reason="tool_use",
-            ),
-            _text("deployed successfully"),
-        ])
+        mock_adapter.invoke = AsyncMock(
+            side_effect=[
+                ModelResponse(
+                    message=Message(
+                        role="assistant",
+                        content="",
+                        tool_calls=[
+                            ToolCall(id="c1", name="deploy_prod", arguments={"version": "1.2.3"})
+                        ],
+                    ),
+                    usage=TokenUsage(input_tokens=10, output_tokens=5),
+                    stop_reason="tool_use",
+                ),
+                ModelResponse(
+                    message=Message(
+                        role="assistant",
+                        content="",
+                        tool_calls=[
+                            ToolCall(id="c2", name="deploy_prod", arguments={"version": "1.2.3"})
+                        ],
+                    ),
+                    usage=TokenUsage(input_tokens=10, output_tokens=5),
+                    stop_reason="tool_use",
+                ),
+                _text("deployed successfully"),
+            ]
+        )
         M.return_value = mock_adapter
 
         agent = (
             Mori.builder()
             .model("anthropic", api_key="test")
-            .tool(lambda version: f"deploying {version}", description="Deploy to prod", name="deploy_prod")
+            .tool(
+                lambda version: f"deploying {version}",
+                description="Deploy to prod",
+                name="deploy_prod",
+            )
             .checkpointer("inmemory")
             .policy_file(str(policy))
             .build()
@@ -132,12 +155,18 @@ async def test_mori_resume(tmp_path):
         # Swap permission engine to allow-all and resume
         from mori.permission.engine import PermissionEngine
         from mori.permission.types import IdentityPattern, PermissionRule, ResourcePattern
+
         engine = PermissionEngine()
-        engine.load_rules([PermissionRule(
-            resource=ResourcePattern(type="*", pattern="*"),
-            identity=IdentityPattern(match="any", value="*"),
-            permissions="rwx", effect="allow",
-        )])
+        engine.load_rules(
+            [
+                PermissionRule(
+                    resource=ResourcePattern(type="*", pattern="*"),
+                    identity=IdentityPattern(match="any", value="*"),
+                    permissions="rwx",
+                    effect="allow",
+                )
+            ]
+        )
         agent._loop._permission = engine
         result2 = await agent.resume(thread_id="resume_thread", input={"approved": True})
         assert result2.status == RunStatus.COMPLETED

@@ -3,10 +3,10 @@
 from __future__ import annotations
 
 import asyncio
-import inspect
 import time
-from datetime import datetime, timezone
-from typing import Any, Callable, Literal, cast
+from collections.abc import Callable
+from datetime import UTC, datetime
+from typing import Any, Literal, cast
 
 from mori.protocols.cli.runner import CLIRunner, CLIToolConfig
 from mori.protocols.mcp.client import MCPClient
@@ -253,7 +253,7 @@ class ToolRegistry:
             metrics.total_calls += 1
             metrics._total_latency_ms += result.latency_ms
             metrics.avg_latency_ms = metrics._total_latency_ms / metrics.total_calls
-            metrics.last_called = datetime.now(tz=timezone.utc)
+            metrics.last_called = datetime.now(tz=UTC)
             if not result.success:
                 metrics.total_errors += 1
                 metrics.last_error = result.error

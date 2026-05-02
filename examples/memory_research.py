@@ -21,17 +21,13 @@ Usage:
 """
 
 import asyncio
-import secrets
-from datetime import datetime, timezone
-from pathlib import Path
 
 from dotenv import load_dotenv
 
 load_dotenv()
 
 from mori import Mori
-from mori.types import MemoryLayer, MemoryRecord, MemoryRecordId
-
+from mori.types import MemoryLayer
 
 # ── Simulated knowledge base ─────────────────────────────────
 
@@ -79,6 +75,7 @@ def get_languages() -> str:
 
 # ── Agent ────────────────────────────────────────────────────
 
+
 async def main() -> None:
     agent = (
         Mori.builder()
@@ -104,11 +101,13 @@ async def main() -> None:
     result = await agent.run(task)
 
     print(f"\n{'━' * 70}")
-    print(f"  Answer:\n")
+    print("  Answer:\n")
     for line in result.final_output.splitlines():
         print(f"  {line}")
-    print(f"\n  [{result.total_steps} steps, {result.total_tool_calls} tool calls, "
-          f"{result.total_usage.total} tokens]")
+    print(
+        f"\n  [{result.total_steps} steps, {result.total_tool_calls} tool calls, "
+        f"{result.total_usage.total} tokens]"
+    )
     print(f"{'━' * 70}\n")
 
     # ── Inspect working memory ────────────────────────────────
@@ -119,13 +118,13 @@ async def main() -> None:
         print(f"  [step {i}] {r.content}")
 
     # ── Inspect episodic memory ───────────────────────────────
-    print(f"\nEpisodic-memory records (one per run):\n")
+    print("\nEpisodic-memory records (one per run):\n")
     episodic = await backend.list_records(MemoryLayer.EPISODIC)
     for ep in episodic:
         print(f"  {ep.content[:200]}")
 
     # ── Promote working → semantic ────────────────────────────
-    print(f"\nPromoting all working records to semantic layer...\n")
+    print("\nPromoting all working records to semantic layer...\n")
     working_ids = [r.record_id for r in working]
     if working_ids:
         new_ids = await agent.memory.promote(
@@ -147,7 +146,7 @@ async def main() -> None:
 
     # ── Final stats ───────────────────────────────────────────
     stats = await agent.memory.stats()
-    print(f"\nFinal memory stats:\n")
+    print("\nFinal memory stats:\n")
     for layer in MemoryLayer:
         count = stats.records_per_layer[layer]
         tokens = stats.estimated_tokens_per_layer[layer]

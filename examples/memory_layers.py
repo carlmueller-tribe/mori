@@ -21,7 +21,7 @@ Usage:
 
 import asyncio
 import secrets
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 
 from mori.memory.backends.inmemory import InMemoryBackend
 from mori.memory.module import MemoryModule
@@ -45,8 +45,8 @@ def make_record(
         record_id=MemoryRecordId(f"mem_{secrets.token_hex(8)}"),
         layer=layer,
         content=content,
-        created_at=datetime.now(timezone.utc),
-        updated_at=datetime.now(timezone.utc),
+        created_at=datetime.now(UTC),
+        updated_at=datetime.now(UTC),
         confidence=confidence,
         ttl_seconds=ttl_seconds,
         provenance=provenance,
@@ -71,22 +71,24 @@ async def main() -> None:
         make_record("Step 2: Ran validation checks — all passed.", MemoryLayer.WORKING),
         make_record("Step 3: Sent confirmation email to user@example.com.", MemoryLayer.WORKING),
         # Low confidence — will be pruned in step 5
-        make_record("Step 4: Maybe cached the result? Not sure.", MemoryLayer.WORKING,
-                    confidence=0.1),
+        make_record(
+            "Step 4: Maybe cached the result? Not sure.", MemoryLayer.WORKING, confidence=0.1
+        ),
         # Short TTL — will expire in step 5 (we simulate with ttl_seconds=0)
-        make_record("Step 5: Temporary rate-limit token acquired.", MemoryLayer.WORKING,
-                    ttl_seconds=0),  # expires immediately
+        make_record(
+            "Step 5: Temporary rate-limit token acquired.", MemoryLayer.WORKING, ttl_seconds=0
+        ),  # expires immediately
     ]
 
     episodic_records = [
         make_record(
             'Run "onboard_user": completed in 3 steps. Tools: db_query, email_send. '
-            'Result: user onboarded successfully.',
+            "Result: user onboarded successfully.",
             MemoryLayer.EPISODIC,
         ),
         make_record(
             'Run "reset_password": completed in 2 steps. Tools: db_query, email_send. '
-            'Result: reset link sent.',
+            "Result: reset link sent.",
             MemoryLayer.EPISODIC,
         ),
     ]
@@ -99,7 +101,9 @@ async def main() -> None:
     # ── 2. Read records by ID ─────────────────────────────────
     section("2. Read specific records by ID")
 
-    fetched = await memory.read_by_ids([working_records[0].record_id, episodic_records[0].record_id])
+    fetched = await memory.read_by_ids(
+        [working_records[0].record_id, episodic_records[0].record_id]
+    )
     for r in fetched:
         print(f"  [{r.layer.value}] {r.content[:70]}")
 
@@ -120,8 +124,7 @@ async def main() -> None:
     section("4. Promote high-confidence working records to semantic layer")
 
     high_conf_ids = [
-        r.record_id for r in working_records
-        if r.confidence >= 0.5 and r.ttl_seconds is None
+        r.record_id for r in working_records if r.confidence >= 0.5 and r.ttl_seconds is None
     ]
     new_ids = await memory.promote(
         source_layer=MemoryLayer.WORKING,

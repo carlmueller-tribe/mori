@@ -1,13 +1,21 @@
 """SkillsModule — discover, load, bind, record_outcome, health."""
+
 from __future__ import annotations
+
 from collections import Counter, deque
-from datetime import datetime, timezone, timedelta
+from datetime import UTC, datetime, timedelta
 from typing import Any
+
 from mori.skills.parser import load_skill_md
-from mori.skills.registry import FilesystemRegistry, CompositeRegistry, SkillRegistry
+from mori.skills.registry import SkillRegistry
 from mori.skills.types import (
-    BoundSkill, CompatibilityReport, SkillCandidate, SkillExecutionOutcome,
-    SkillHealthReport, SkillManifest, SkillPayload,
+    BoundSkill,
+    CompatibilityReport,
+    SkillCandidate,
+    SkillExecutionOutcome,
+    SkillHealthReport,
+    SkillManifest,
+    SkillPayload,
 )
 from mori.types import DisclosureLevel, ToolSpec
 
@@ -38,8 +46,7 @@ class SkillsModule:
             if not report.tools_satisfied:
                 continue
             score = 1.0  # no embedder: uniform score, registry order preserved
-            candidates.append(SkillCandidate(manifest=m, score=score,
-                                              compatibility_report=report))
+            candidates.append(SkillCandidate(manifest=m, score=score, compatibility_report=report))
         candidates.sort(key=lambda c: c.score, reverse=True)
         return candidates[:max_candidates]
 
@@ -58,9 +65,7 @@ class SkillsModule:
 
     # ── Load ─────────────────────────────────────────────────
 
-    async def load(
-        self, skill_id: str, disclosure_level: str, max_tokens: int
-    ) -> SkillPayload:
+    async def load(self, skill_id: str, disclosure_level: str, max_tokens: int) -> SkillPayload:
         manifests = self._registry.search("", limit=100)
         manifest = next((m for m in manifests if m.name == skill_id), None)
         if manifest is None:
@@ -112,15 +117,20 @@ class SkillsModule:
         total = len(window)
         if total == 0:
             return SkillHealthReport(
-                skill_id=skill_id, total_runs=0, success_rate=0.0,
-                avg_steps=0.0, common_failures=[], last_used=None, stale=True,
+                skill_id=skill_id,
+                total_runs=0,
+                success_rate=0.0,
+                avg_steps=0.0,
+                common_failures=[],
+                last_used=None,
+                stale=True,
             )
         successes = sum(1 for o in window if o.success)
         avg_steps = sum(o.steps_taken for o in window) / total
         failures = [o.failure_reason for o in window if o.failure_reason]
         common = [reason for reason, _ in Counter(failures).most_common(3)]
         last_used = max(o.timestamp for o in window)
-        stale = (datetime.now(timezone.utc) - last_used) > timedelta(days=90)
+        stale = (datetime.now(UTC) - last_used) > timedelta(days=90)
         return SkillHealthReport(
             skill_id=skill_id,
             total_runs=total,

@@ -1,12 +1,15 @@
 """HookRegistry — priority dispatch with timeout and fail_open."""
+
 from __future__ import annotations
 
 import asyncio
 import inspect
 import secrets
+from collections.abc import Awaitable, Callable
+from datetime import UTC, datetime
+from typing import Any
+
 import structlog
-from datetime import datetime, timezone
-from typing import Any, Awaitable, Callable, Union
 
 from mori.hooks.types import HookConfig, HookHandler, HookRegistration
 
@@ -21,13 +24,16 @@ class HookRegistry:
         self._registrations: dict[str, HookRegistration] = {}
 
     def register(
-        self, event_name: str, handler: HookHandler,
-        priority: int = 100, name: str | None = None,
+        self,
+        event_name: str,
+        handler: HookHandler,
+        priority: int = 100,
+        name: str | None = None,
     ) -> str:
         hooks = self._hooks.setdefault(event_name, [])
         if len(hooks) >= self._config.max_hooks_per_event:
             raise ValueError(
-                f"Max hooks per event ({self._config.max_hooks_per_event}) reached for '{event_name}'"
+                f"Max hooks per event ({self._config.max_hooks_per_event}) reached for '{event_name}'"  # noqa: E501
             )
         hook_id = f"hook_{secrets.token_hex(6)}"
         hooks.append((priority, hook_id, handler))
@@ -35,9 +41,11 @@ class HookRegistry:
         raw_name = name or getattr(handler, "__name__", None) or repr(handler)
         handler_name: str = raw_name if isinstance(raw_name, str) else repr(raw_name)
         self._registrations[hook_id] = HookRegistration(
-            hook_id=hook_id, event_name=event_name,
+            hook_id=hook_id,
+            event_name=event_name,
             handler_name=handler_name,
-            priority=priority, registered_at=datetime.now(timezone.utc),
+            priority=priority,
+            registered_at=datetime.now(UTC),
         )
         return hook_id
 
@@ -45,13 +53,16 @@ class HookRegistry:
         if hook_id not in self._registrations:
             return False
         reg = self._registrations.pop(hook_id)
-        self._hooks[reg.event_name] = [t for t in self._hooks.get(reg.event_name, []) if t[1] != hook_id]
+        self._hooks[reg.event_name] = [
+            t for t in self._hooks.get(reg.event_name, []) if t[1] != hook_id
+        ]  # noqa: E501
         return True
 
     def hook(self, event_name: str, priority: int = 100) -> Callable[[HookHandler], HookHandler]:
         def decorator(fn: HookHandler) -> HookHandler:
             self.register(event_name, fn, priority=priority, name=fn.__name__)
             return fn
+
         return decorator
 
     async def _call(self, handler: HookHandler, payload: Any) -> Any:
@@ -62,7 +73,7 @@ class HookRegistry:
                 loop = asyncio.get_running_loop()
                 awaitable = loop.run_in_executor(None, handler, payload)
             return await asyncio.wait_for(awaitable, timeout=self._config.hook_timeout_sec)
-        except asyncio.TimeoutError:
+        except TimeoutError:
             if self._config.log_hook_errors:
                 log.warning("hook.timeout", handler=getattr(handler, "__name__", "?"))
             if not self._config.fail_open:
@@ -95,7 +106,9 @@ class HookRegistry:
     def clear(self, event_name: str | None = None) -> int:
         if event_name is not None:
             removed = len(self._hooks.pop(event_name, []))
-            for hid in [hid for hid, r in self._registrations.items() if r.event_name == event_name]:
+            for hid in [
+                hid for hid, r in self._registrations.items() if r.event_name == event_name
+            ]:  # noqa: E501
                 del self._registrations[hid]
             return removed
         count = sum(len(v) for v in self._hooks.values())

@@ -1,9 +1,11 @@
 """Tests for BudgetManager — per-slot allocation, rebalance, compaction."""
-import pytest
+
 from unittest.mock import AsyncMock, MagicMock
 
-from mori.budget.types import BudgetSlot, BudgetConfig, RebalanceHints
+import pytest
+
 from mori.budget.manager import BudgetManager
+from mori.budget.types import BudgetConfig, BudgetSlot, RebalanceHints
 from mori.types import Phase
 
 
@@ -102,6 +104,7 @@ def test_budget_report(mgr):
 def msg():
     """Helper to create Message objects."""
     from mori.types import Message
+
     return Message
 
 
@@ -109,6 +112,7 @@ async def test_stage1_result_trim(mgr, msg):
     """Stage 1 truncates oversized tool results."""
     from mori.budget.types import CompactionModules
     from mori.types import Message
+
     state = MagicMock()
     long_content = "x" * 20_000
     state.messages = [
@@ -124,6 +128,7 @@ async def test_stage1_result_trim(mgr, msg):
 async def test_stage2_schema_defer_sets_flag(mgr):
     """Stage 2 sets _defer_schemas flag."""
     from mori.budget.types import CompactionModules
+
     state = MagicMock()
     assert mgr._defer_schemas is False
     await mgr._stage_schema_defer(state, CompactionModules())
@@ -134,11 +139,15 @@ async def test_stage3_turn_snip_removes_oldest_tool_round(mgr):
     """Stage 3 removes oldest tool call/result pair."""
     from mori.budget.types import CompactionModules
     from mori.types import Message, ToolCall
+
     state = MagicMock()
     state.messages = [
         Message(role="user", content="task"),
-        Message(role="assistant", content="",
-                tool_calls=[ToolCall(id="c1", name="read", arguments={"path": "f"})]),
+        Message(
+            role="assistant",
+            content="",
+            tool_calls=[ToolCall(id="c1", name="read", arguments={"path": "f"})],
+        ),
         Message(role="tool", content="file contents here", tool_call_id="c1"),
         Message(role="assistant", content="I found it"),
         Message(role="assistant", content="done"),
@@ -156,6 +165,7 @@ async def test_compaction_pipeline_stops_early(mgr):
     """Pipeline stops once needs_compaction() is False."""
     from mori.budget.types import CompactionModules
     from mori.types import Message
+
     state = MagicMock()
     # Include a large tool result so stage 1 can reclaim tokens and drop below threshold
     big_tool_content = "y" * 80_000  # ~20k tokens at 4 chars/token
@@ -181,6 +191,7 @@ async def test_stage6_conversation_summarize(mgr):
     """Stage 6 calls model and inserts summary message."""
     from mori.budget.types import CompactionModules
     from mori.types import Message, ModelResponse, TokenUsage
+
     state = MagicMock()
     state.messages = [
         Message(role="user", content="task"),
@@ -195,31 +206,42 @@ async def test_stage6_conversation_summarize(mgr):
         Message(role="assistant", content="recent 4"),
     ]
     mock_model = AsyncMock()
-    mock_model.invoke = AsyncMock(return_value=ModelResponse(
-        message=Message(role="assistant", content="Summary of conversation."),
-        usage=TokenUsage(input_tokens=100, output_tokens=20),
-        stop_reason="end_turn",
-    ))
+    mock_model.invoke = AsyncMock(
+        return_value=ModelResponse(
+            message=Message(role="assistant", content="Summary of conversation."),
+            usage=TokenUsage(input_tokens=100, output_tokens=20),
+            stop_reason="end_turn",
+        )
+    )
     modules = CompactionModules(model=mock_model)
     mgr.consume(BudgetSlot.CONVERSATION, 90_000)
     reclaimed = await mgr._stage_conversation_summarize(state, modules)
     # Model was called
     mock_model.invoke.assert_called_once()
     # Summary message inserted
-    assert any("[Conversation Summary]" in (m.content if isinstance(m.content, str) else "")
-               for m in state.messages)
+    assert any(
+        "[Conversation Summary]" in (m.content if isinstance(m.content, str) else "")
+        for m in state.messages
+    )
 
 
 def test_recount_from_state(mgr):
     """recount_from_state routes messages to correct slots by role and content."""
     from mori.types import Message
-    state_stub = type("S", (), {"messages": [
-        Message(role="user", content="do the thing"),
-        Message(role="system", content="[Memory Context]\n- fact"),
-        Message(role="system", content="[Skill Context: bug-fix]\nsummary"),
-        Message(role="system", content="[System Prompt] You are an agent."),
-        Message(role="assistant", content="thinking..."),
-    ]})()
+
+    state_stub = type(
+        "S",
+        (),
+        {
+            "messages": [
+                Message(role="user", content="do the thing"),
+                Message(role="system", content="[Memory Context]\n- fact"),
+                Message(role="system", content="[Skill Context: bug-fix]\nsummary"),
+                Message(role="system", content="[System Prompt] You are an agent."),
+                Message(role="assistant", content="thinking..."),
+            ]
+        },
+    )()
     mgr.consume(BudgetSlot.CONVERSATION, 5000)  # pre-existing consumption
     mgr.recount_from_state(state_stub)
     # pre-existing consumption cleared
@@ -231,7 +253,6 @@ def test_recount_from_state(mgr):
 
 def test_rebalance_with_hints(mgr):
     """rebalance hints add extra tokens on top of phase allocation."""
-    from mori.budget.types import RebalanceHints
     before = mgr.get_allocation(BudgetSlot.MEMORY).allocated
     budgets = mgr.rebalance(Phase.PLAN, hints=RebalanceHints(extra_memory_tokens=5000))
     after = budgets[BudgetSlot.MEMORY].allocated

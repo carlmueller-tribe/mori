@@ -24,6 +24,7 @@ PROJECT_ROOT = str(Path(__file__).resolve().parent.parent)
 
 # ── Computation tools ────────────────────────────────────────
 
+
 def add(a: float, b: float) -> float:
     """Add two numbers."""
     return a + b
@@ -71,6 +72,7 @@ def calculate(operation: str, numbers: list[float]) -> str:
 
 # ── File tools ───────────────────────────────────────────────
 
+
 def list_files(directory: str = ".") -> str:
     """List files in a directory with line counts."""
     full_path = Path(PROJECT_ROOT) / directory
@@ -101,8 +103,10 @@ def format_table(headers: str, rows: str) -> str:
     cols = [h.strip() for h in headers.split(",")]
     data = [[v.strip() for v in row.split(",")] for row in rows.split(";")]
 
-    widths = [max(len(c), *(len(r[i]) if i < len(r) else 0 for r in data)) for i, c in enumerate(cols)]
-    header_line = " | ".join(c.ljust(w) for c, w in zip(cols, widths))
+    widths = [
+        max(len(c), *(len(r[i]) if i < len(r) else 0 for r in data)) for i, c in enumerate(cols)
+    ]
+    header_line = " | ".join(c.ljust(w) for c, w in zip(cols, widths, strict=False))
     sep = "-+-".join("-" * w for w in widths)
     body = "\n".join(
         " | ".join((r[i] if i < len(r) else "").ljust(w) for i, w in enumerate(widths))
@@ -113,6 +117,7 @@ def format_table(headers: str, rows: str) -> str:
 
 # ── Agent ────────────────────────────────────────────────────
 
+
 async def main():
     agent = (
         Mori.builder()
@@ -121,7 +126,9 @@ async def main():
         .tool(subtract, description="Subtract b from a")
         .tool(multiply, description="Multiply two numbers")
         .tool(divide, description="Divide a by b")
-        .tool(calculate, description="Calculate over a list of numbers: sum, average, min, max, count")
+        .tool(
+            calculate, description="Calculate over a list of numbers: sum, average, min, max, count"
+        )
         .tool(list_files, description="List Python files in a directory with line counts")
         .tool(read_file, description="Read the contents of a file")
         .tool(format_table, description="Format data as an aligned text table")
@@ -143,10 +150,12 @@ async def main():
     result = await agent.run(task)
 
     print(f"\n{'━' * 70}")
-    print(f"  Answer:\n")
+    print("  Answer:\n")
     print(f"  {result.final_output}")
-    print(f"\n  [{result.total_steps} steps, {result.total_tool_calls} tool calls, "
-          f"{result.total_usage.total} tokens]")
+    print(
+        f"\n  [{result.total_steps} steps, {result.total_tool_calls} tool calls, "
+        f"{result.total_usage.total} tokens]"
+    )
     print(f"{'━' * 70}")
 
     await agent.close()

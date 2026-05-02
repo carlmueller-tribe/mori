@@ -1,7 +1,11 @@
 """MemoryBackend protocol."""
+
 from __future__ import annotations
+
 from typing import Any, Literal, Protocol, runtime_checkable
+
 from mori.types import MemoryFilters, MemoryLayer, MemoryRecord, MemoryRecordId
+
 
 @runtime_checkable
 class MemoryBackend(Protocol):
@@ -9,9 +13,19 @@ class MemoryBackend(Protocol):
     async def get(self, record_ids: list[MemoryRecordId]) -> list[MemoryRecord]: ...
     async def update(self, record_id: MemoryRecordId, updates: dict[str, Any]) -> MemoryRecord: ...
     async def delete(self, record_ids: list[MemoryRecordId]) -> int: ...
-    async def search(self, embedding: list[float], layer: MemoryLayer | None = None,
-        limit: int = 20, filters: MemoryFilters | None = None) -> list[tuple[MemoryRecord, float]]: ...
-    async def list_records(self, layer: MemoryLayer, limit: int = 100, offset: int = 0,
-        order_by: Literal["created_at", "updated_at", "confidence"] = "created_at") -> list[MemoryRecord]: ...
+    async def search(
+        self,
+        embedding: list[float],
+        layer: MemoryLayer | None = None,
+        limit: int = 20,
+        filters: MemoryFilters | None = None,
+    ) -> list[tuple[MemoryRecord, float]]: ...  # noqa: E501
+    async def list_records(
+        self,
+        layer: MemoryLayer,
+        limit: int = 100,
+        offset: int = 0,
+        order_by: Literal["created_at", "updated_at", "confidence"] = "created_at",
+    ) -> list[MemoryRecord]: ...  # noqa: E501
     async def count(self, layer: MemoryLayer | None = None) -> int: ...
     async def close(self) -> None: ...

@@ -4,7 +4,6 @@ from unittest.mock import AsyncMock, patch
 
 import pytest
 
-from mori.protocols.cli.runner import CLIToolConfig
 from mori.tools.registry import ToolRegistry
 from mori.types import ToolSource
 
@@ -26,14 +25,23 @@ def test_register_cli():
 
 def test_register_cli_with_options():
     registry = ToolRegistry()
-    registry.register_cli(name="git", command="git", description="Git", args_format="subcommand", cwd="/tmp", timeout_sec=30.0)
+    registry.register_cli(
+        name="git",
+        command="git",
+        description="Git",
+        args_format="subcommand",
+        cwd="/tmp",
+        timeout_sec=30.0,
+    )
     assert registry.get_spec("git") is not None
 
 
 @pytest.mark.anyio
 async def test_invoke_cli_tool():
     registry = ToolRegistry()
-    registry.register_cli(name="echo_test", command="echo", description="Echo", args_format="positional")
+    registry.register_cli(
+        name="echo_test", command="echo", description="Echo", args_format="positional"
+    )
     result = await registry.invoke("echo_test", {"0": "hello"})
     assert result.success is True
     assert "hello" in result.content
@@ -42,7 +50,9 @@ async def test_invoke_cli_tool():
 @pytest.mark.anyio
 async def test_invoke_cli_tool_tracks_metrics():
     registry = ToolRegistry()
-    registry.register_cli(name="echo_test", command="echo", description="Echo", args_format="positional")
+    registry.register_cli(
+        name="echo_test", command="echo", description="Echo", args_format="positional"
+    )
     await registry.invoke("echo_test", {"0": "hi"})
     metrics = registry.get_metrics("cli:echo_test")
     assert metrics is not None
@@ -86,8 +96,11 @@ def test_register_cli_full_schema_preserved():
         "required": ["q"],
     }
     registry.register_cli(
-        name="search", command="rg", description="Search",
-        args_format="flags", args_schema=full_schema,
+        name="search",
+        command="rg",
+        description="Search",
+        args_format="flags",
+        args_schema=full_schema,
     )
     spec = registry.get_spec("search")
     assert spec is not None
@@ -111,6 +124,8 @@ async def test_register_mcp_server():
     mock_client.name = "test_server"
     mock_client.discover_tools = AsyncMock(return_value=[])
     with patch("mori.tools.registry.MCPClient", return_value=mock_client):
-        tool_ids = await registry.register_mcp_server(name="test_server", url="http://localhost:3000")
+        tool_ids = await registry.register_mcp_server(
+            name="test_server", url="http://localhost:3000"
+        )
     mock_client.connect.assert_called_once()
     assert isinstance(tool_ids, list)

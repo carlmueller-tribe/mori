@@ -1,7 +1,7 @@
 """Tests for StdoutSink and JsonlSink."""
 
 import json
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 
 from mori.observability.events import (
     MoriEvent,
@@ -16,7 +16,7 @@ def _make_event(**overrides) -> MoriEvent:
     defaults = {
         "event_id": "evt_1",
         "event_type": "test",
-        "timestamp": datetime.now(timezone.utc),
+        "timestamp": datetime.now(UTC),
         "run_id": RunId("run_1"),
     }
     defaults.update(overrides)
@@ -27,7 +27,7 @@ async def test_stdout_sink_write(capsys):
     sink = StdoutSink()
     event = RunStartEvent(
         event_id="evt_1",
-        timestamp=datetime.now(timezone.utc),
+        timestamp=datetime.now(UTC),
         run_id=RunId("run_1"),
         task="test task",
     )

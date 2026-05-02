@@ -1,7 +1,9 @@
 # tests/test_skill_registry.py
 import textwrap
+
 import pytest
-from mori.skills.registry import FilesystemRegistry, CompositeRegistry
+
+from mori.skills.registry import CompositeRegistry, FilesystemRegistry
 from mori.skills.types import SkillManifest
 
 MANIFEST_A = textwrap.dedent("""\
@@ -77,6 +79,7 @@ def test_registry_limit(skills_dir):
 
 def test_registry_caches_on_second_call(skills_dir):
     import shutil
+
     reg = FilesystemRegistry(str(skills_dir))
     r1 = reg.search("q", limit=10)
     shutil.rmtree(skills_dir / "beta")
@@ -99,7 +102,8 @@ def test_composite_registry_merges(skills_dir, tmp_path):
     dir2.mkdir()
     c = dir2 / "gamma"
     c.mkdir()
-    (c / "manifest.yaml").write_text(textwrap.dedent("""\
+    (c / "manifest.yaml").write_text(
+        textwrap.dedent("""\
         name: gamma
         version: 1.0.0
         description: Gamma
@@ -112,7 +116,8 @@ def test_composite_registry_merges(skills_dir, tmp_path):
           abstract: Gamma abstract here.
           summary: Gamma summary.
           full: SKILL.md
-    """))
+    """)
+    )
     (c / "SKILL.md").write_text("# Gamma")
     r1 = FilesystemRegistry(str(skills_dir))
     r2 = FilesystemRegistry(str(dir2))

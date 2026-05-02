@@ -1,8 +1,12 @@
 """Skill types for Mori v0.4."""
+
 from __future__ import annotations
+
 from datetime import datetime
 from typing import Any
+
 from pydantic import Field
+
 from mori.types import DisclosureLevel, MoriModel, ToolSpec
 
 

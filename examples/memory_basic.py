@@ -24,8 +24,8 @@ load_dotenv()
 from mori import Mori
 from mori.types import MemoryLayer
 
-
 # ── Tools ────────────────────────────────────────────────────
+
 
 def add(a: float, b: float) -> float:
     """Add two numbers."""
@@ -39,7 +39,7 @@ def multiply(a: float, b: float) -> float:
 
 def power(base: float, exponent: float) -> float:
     """Raise base to exponent."""
-    return base ** exponent
+    return base**exponent
 
 
 def round_decimal(value: float, places: int = 2) -> float:
@@ -48,6 +48,7 @@ def round_decimal(value: float, places: int = 2) -> float:
 
 
 # ── Agent ────────────────────────────────────────────────────
+
 
 async def main() -> None:
     agent = (
@@ -77,8 +78,10 @@ async def main() -> None:
 
     print(f"\n{'━' * 70}")
     print(f"  Answer: {result.final_output}")
-    print(f"  [{result.total_steps} steps, {result.total_tool_calls} tool calls, "
-          f"{result.total_usage.total} tokens]")
+    print(
+        f"  [{result.total_steps} steps, {result.total_tool_calls} tool calls, "
+        f"{result.total_usage.total} tokens]"
+    )
     print(f"{'━' * 70}\n")
 
     # ── Memory stats ──────────────────────────────────────────
@@ -99,6 +102,7 @@ async def main() -> None:
 
     # ── Peek at episodic record ───────────────────────────────
     from mori.memory.backends.inmemory import InMemoryBackend
+
     backend = agent.memory._backend  # type: ignore[attr-defined]
     if isinstance(backend, InMemoryBackend):
         episodic = await backend.list_records(MemoryLayer.EPISODIC)

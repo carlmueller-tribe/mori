@@ -1,10 +1,11 @@
 """Checkpoint store — protocol + InMemory / File / SQLite backends."""
+
 from __future__ import annotations
 
 import contextlib
 import secrets
 import sqlite3
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from pathlib import Path
 from typing import TYPE_CHECKING, Any, Protocol, runtime_checkable
 
@@ -20,8 +21,9 @@ class Checkpoint(MoriModel):
     state_json: str
     created_at: datetime
 
-    def restore(self) -> "MoriState":
+    def restore(self) -> MoriState:
         from mori.runtime.state import MoriState
+
         return MoriState.model_validate_json(self.state_json)
 
 
@@ -46,8 +48,10 @@ class InMemoryCheckpoints:
     async def save(self, state: Any) -> CheckpointId:
         cid = _new_cid()
         cp = Checkpoint(
-            checkpoint_id=cid, thread_id=state.thread_id,
-            state_json=state.model_dump_json(), created_at=datetime.now(timezone.utc),
+            checkpoint_id=cid,
+            thread_id=state.thread_id,
+            state_json=state.model_dump_json(),
+            created_at=datetime.now(UTC),
         )
         self._store[cid] = cp
         self._order.setdefault(state.thread_id, []).append(cid)
@@ -66,7 +70,9 @@ class InMemoryCheckpoints:
     async def delete(self, checkpoint_id: CheckpointId) -> None:
         if checkpoint_id in self._store:
             cp = self._store.pop(checkpoint_id)
-            self._order[cp.thread_id] = [c for c in self._order.get(cp.thread_id, []) if c != checkpoint_id]
+            self._order[cp.thread_id] = [
+                c for c in self._order.get(cp.thread_id, []) if c != checkpoint_id
+            ]  # noqa: E501
 
 
 class FileCheckpoints:
@@ -80,8 +86,10 @@ class FileCheckpoints:
     async def save(self, state: Any) -> CheckpointId:
         cid = _new_cid()
         cp = Checkpoint(
-            checkpoint_id=cid, thread_id=state.thread_id,
-            state_json=state.model_dump_json(), created_at=datetime.now(timezone.utc),
+            checkpoint_id=cid,
+            thread_id=state.thread_id,
+            state_json=state.model_dump_json(),
+            created_at=datetime.now(UTC),
         )
         self._path(cid).write_text(cp.model_dump_json())
         return cid
@@ -125,8 +133,10 @@ class SQLiteCheckpoints:
 
     def _row_to_checkpoint(self, row: tuple[Any, ...]) -> Checkpoint:
         return Checkpoint(
-            checkpoint_id=CheckpointId(row[0]), thread_id=ThreadId(row[1]),
-            state_json=row[2], created_at=datetime.fromisoformat(row[3]),
+            checkpoint_id=CheckpointId(row[0]),
+            thread_id=ThreadId(row[1]),
+            state_json=row[2],
+            created_at=datetime.fromisoformat(row[3]),
         )
 
     async def save(self, state: Any) -> CheckpointId:
@@ -134,7 +144,7 @@ class SQLiteCheckpoints:
         with contextlib.closing(sqlite3.connect(self._path)) as conn:
             conn.execute(
                 "INSERT INTO checkpoints VALUES (?, ?, ?, ?)",
-                (cid, state.thread_id, state.model_dump_json(), datetime.now(timezone.utc).isoformat()),
+                (cid, state.thread_id, state.model_dump_json(), datetime.now(UTC).isoformat()),
             )
             conn.commit()
         return cid
@@ -143,7 +153,8 @@ class SQLiteCheckpoints:
         with contextlib.closing(sqlite3.connect(self._path)) as conn:
             row = conn.execute(
                 "SELECT checkpoint_id, thread_id, state_json, created_at FROM checkpoints "
-                "WHERE thread_id = ? ORDER BY created_at DESC LIMIT 1", (thread_id,)
+                "WHERE thread_id = ? ORDER BY created_at DESC LIMIT 1",
+                (thread_id,),
             ).fetchone()
         return self._row_to_checkpoint(row) if row else None
 
@@ -151,7 +162,8 @@ class SQLiteCheckpoints:
         with contextlib.closing(sqlite3.connect(self._path)) as conn:
             row = conn.execute(
                 "SELECT checkpoint_id, thread_id, state_json, created_at FROM checkpoints "
-                "WHERE checkpoint_id = ?", (checkpoint_id,)
+                "WHERE checkpoint_id = ?",
+                (checkpoint_id,),
             ).fetchone()
         return self._row_to_checkpoint(row) if row else None
 
@@ -159,7 +171,8 @@ class SQLiteCheckpoints:
         with contextlib.closing(sqlite3.connect(self._path)) as conn:
             rows = conn.execute(
                 "SELECT checkpoint_id, thread_id, state_json, created_at FROM checkpoints "
-                "WHERE thread_id = ? ORDER BY created_at ASC", (thread_id,)
+                "WHERE thread_id = ? ORDER BY created_at ASC",
+                (thread_id,),
             ).fetchall()
         return [self._row_to_checkpoint(r) for r in rows]
 

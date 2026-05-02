@@ -21,8 +21,8 @@ from mori.types import (
     TraceId,
 )
 
-
 # ── Base Event ───────────────────────────────────────────────
+
 
 class MoriEvent(MoriModel):
     event_id: str
@@ -37,6 +37,7 @@ class MoriEvent(MoriModel):
 
 
 # ── Loop Events ──────────────────────────────────────────────
+
 
 class RunStartEvent(MoriEvent):
     event_type: str = "run.start"
@@ -71,6 +72,7 @@ class StepEndEvent(MoriEvent):
 
 # ── Tool Events ──────────────────────────────────────────────
 
+
 class ToolInvokeEvent(MoriEvent):
     event_type: str = "tool.invoke"
     tool_name: str
@@ -90,6 +92,7 @@ class ToolResultEvent(MoriEvent):
 
 # ── Control Events ───────────────────────────────────────────
 
+
 class BoundViolationEvent(MoriEvent):
     event_type: str = "control.bound_violation"
     bound_name: str
@@ -99,6 +102,7 @@ class BoundViolationEvent(MoriEvent):
 
 # ── Memory Events ────────────────────────────────────────────
 
+
 class MemoryReadEvent(MoriEvent):
     event_type: str = "memory.read"
     query: str
@@ -106,6 +110,7 @@ class MemoryReadEvent(MoriEvent):
     records_returned: int
     tokens_consumed: int
     duration_ms: float
+
 
 class MemoryWriteEvent(MoriEvent):
     event_type: str = "memory.write"
@@ -115,6 +120,7 @@ class MemoryWriteEvent(MoriEvent):
 
 
 # ── Skills Events ────────────────────────────────────────────
+
 
 class SkillDiscoverEvent(MoriEvent):
     event_type: str = "skill.discover"
@@ -135,6 +141,7 @@ class SkillLoadEvent(MoriEvent):
 
 # ── Budget Events ────────────────────────────────────────────
 
+
 class BudgetRebalanceEvent(MoriEvent):
     event_type: str = "budget.rebalance"
     phase: str
@@ -152,17 +159,19 @@ class CompactionEvent(MoriEvent):
 
 # ── Permission Events ────────────────────────────────────────
 
+
 class PermissionCheckEvent(MoriEvent):
     event_type: str = "permission.check"
     identity_id: str
     resource_id: str
-    permission: str       # "r", "w", or "x"
-    decision: str         # "allow", "deny", or "escalate"
+    permission: str  # "r", "w", or "x"
+    decision: str  # "allow", "deny", or "escalate"
     rule_id: str | None = None
     explanation: str = ""
 
 
 # ── Trace Context ────────────────────────────────────────────
+
 
 class SpanContext(MoriModel):
     trace_id: TraceId
@@ -181,6 +190,7 @@ class SpanContext(MoriModel):
 
 # ── Sink Protocol ────────────────────────────────────────────
 
+
 @runtime_checkable
 class EventSink(Protocol):
     async def write(self, event: MoriEvent) -> None: ...
@@ -190,6 +200,7 @@ class EventSink(Protocol):
 
 
 # ── Config ───────────────────────────────────────────────────
+
 
 class ObservabilityConfig(MoriModel):
     buffer_size: int = 100
@@ -202,6 +213,7 @@ class ObservabilityConfig(MoriModel):
 
 
 # ── Run Summary ──────────────────────────────────────────────
+
 
 class RunSummary(MoriModel):
     run_id: RunId

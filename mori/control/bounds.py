@@ -3,8 +3,7 @@
 from __future__ import annotations
 
 import time
-from datetime import datetime, timezone
-from typing import Any
+from datetime import UTC, datetime
 
 from pydantic import Field
 
@@ -44,7 +43,7 @@ class ControlBounds:
     def check_bounds(self, state: MoriState) -> BoundCheckResult:
         violated: list[str] = []
         values: dict[str, float] = {}
-        now = datetime.now(timezone.utc)
+        now = datetime.now(UTC)
 
         values["step_count"] = float(state.step_count)
         if state.step_count >= self._config.max_steps:
@@ -65,12 +64,14 @@ class ControlBounds:
         if idle_elapsed >= self._config.idle_timeout_sec:
             violated.append("idle_timeout")
 
-        return BoundCheckResult(ok=len(violated) == 0, violated_bounds=violated, current_values=values)
+        return BoundCheckResult(
+            ok=len(violated) == 0, violated_bounds=violated, current_values=values
+        )  # noqa: E501
 
     def should_retry(self, error: Exception, attempt: int) -> RetryDecision:
         if attempt >= self._config.max_retries_per_tool:
             return RetryDecision(should_retry=False, attempt=attempt)
-        wait = self._config.retry_backoff_base_sec * (2 ** attempt)
+        wait = self._config.retry_backoff_base_sec * (2**attempt)
         wait = min(wait, 60.0)
         return RetryDecision(should_retry=True, wait_sec=wait, attempt=attempt)
 

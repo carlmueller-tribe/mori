@@ -1,8 +1,12 @@
 """Manifest parser and SKILL.md loader."""
+
 from __future__ import annotations
+
 import re
 from pathlib import Path
+
 import yaml
+
 from mori.skills.types import SkillManifest, SkillValidationError
 
 _SEMVER_RE = re.compile(r"^\d+\.\d+\.\d+$")
@@ -13,9 +17,7 @@ def parse_manifest(skill_dir: str) -> SkillManifest:
     path = Path(skill_dir)
     manifest_path = path / "manifest.yaml"
     if not manifest_path.exists():
-        raise SkillValidationError(
-            f"manifest.yaml not found in {skill_dir}", path=skill_dir
-        )
+        raise SkillValidationError(f"manifest.yaml not found in {skill_dir}", path=skill_dir)
     raw = yaml.safe_load(manifest_path.read_text())
     if not raw:
         raise SkillValidationError("manifest.yaml is empty", path=skill_dir)
@@ -46,14 +48,12 @@ def parse_manifest(skill_dir: str) -> SkillManifest:
     summary = str(disclosure.get("summary", ""))
     if len(summary) // 4 >= 500:
         raise SkillValidationError(
-            f"manifest 'summary' exceeds 500 tokens (estimated)", path=skill_dir
+            "manifest 'summary' exceeds 500 tokens (estimated)", path=skill_dir
         )
 
     skill_md_path = path / "SKILL.md"
     if not skill_md_path.exists() or skill_md_path.stat().st_size == 0:
-        raise SkillValidationError(
-            f"SKILL.md not found or empty in {skill_dir}", path=skill_dir
-        )
+        raise SkillValidationError(f"SKILL.md not found or empty in {skill_dir}", path=skill_dir)
 
     return SkillManifest(
         name=name,

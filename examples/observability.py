@@ -48,7 +48,7 @@ async def main():
         .build()
     )
 
-    result = await agent.run("What is (7 + 3) * (2 + 8)?")
+    await agent.run("What is (7 + 3) * (2 + 8)?")
     await agent.close()
 
     # ── Analyze the traces ───────────────────────────────────
@@ -60,7 +60,7 @@ async def main():
     events = [json.loads(line) for line in lines]
 
     print(f"\n  Total events captured: {len(events)}")
-    print(f"  Event types:")
+    print("  Event types:")
     for event in events:
         ts = event["timestamp"][:19]
         etype = event["event_type"]

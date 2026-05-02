@@ -1,15 +1,17 @@
 """Permission system types — identities, resources, rules, results."""
+
 from __future__ import annotations
 
+from enum import StrEnum
 from typing import Any, Literal
-from enum import Enum
 from uuid import uuid4
+
 from pydantic import Field
 
 from mori.types import MoriModel, PermissionDecision
 
 
-class IdentityType(str, Enum):
+class IdentityType(StrEnum):
     USER = "user"
     AGENT = "agent"
     SKILL = "skill"
@@ -25,7 +27,7 @@ class Identity(MoriModel):
     metadata: dict[str, Any] = Field(default_factory=dict)
 
 
-class ResourceType(str, Enum):
+class ResourceType(StrEnum):
     TOOL = "tool"
     SKILL = "skill"
     MEMORY_LAYER = "memory_layer"
@@ -42,13 +44,13 @@ class Resource(MoriModel):
     group: str | None = None
 
 
-class Permission(str, Enum):
+class Permission(StrEnum):
     READ = "r"
     WRITE = "w"
     EXECUTE = "x"
 
 
-class ConditionType(str, Enum):
+class ConditionType(StrEnum):
     RISK_CATEGORY = "risk_category"
     STEP_COUNT = "step_count"
     TOTAL_TOKENS = "total_tokens"
@@ -76,7 +78,7 @@ class PermissionRule(MoriModel):
     id: str = Field(default_factory=lambda: str(uuid4()))
     resource: ResourcePattern
     identity: IdentityPattern
-    permissions: str      # "rwx", "r--", "r-x"
+    permissions: str  # "rwx", "r--", "r-x"
     effect: Literal["allow", "deny", "escalate"]
     priority: int = 100
     conditions: list[Condition] = Field(default_factory=list)

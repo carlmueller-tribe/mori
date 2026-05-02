@@ -1,18 +1,17 @@
 """PermissionEngine — deny-wins resolution for Mori permission rules."""
+
 from __future__ import annotations
 
 import asyncio
 import concurrent.futures
 import fnmatch
 from pathlib import Path
-from typing import Any, Literal
+from typing import Literal
 
 from mori.permission.types import (
     Condition,
-    ConditionType,
     Identity,
     IdentityPattern,
-    IdentityType,
     Permission,
     PermissionConfig,
     PermissionExplanation,
@@ -101,13 +100,14 @@ class PermissionEngine:
     ) -> bool:
         """Synchronous wrapper around :meth:`check`. Returns True iff ALLOW."""
         try:
-            loop = asyncio.get_running_loop()
+            asyncio.get_running_loop()
         except RuntimeError:
-            return asyncio.run(self.check(identity, resource, permission)).decision == PermissionDecision.ALLOW
+            return (
+                asyncio.run(self.check(identity, resource, permission)).decision
+                == PermissionDecision.ALLOW
+            )  # noqa: E501
         with concurrent.futures.ThreadPoolExecutor(max_workers=1) as pool:
-            future = pool.submit(
-                lambda: asyncio.run(self.check(identity, resource, permission))
-            )
+            future = pool.submit(lambda: asyncio.run(self.check(identity, resource, permission)))
             return future.result().decision == PermissionDecision.ALLOW
 
     async def explain(
@@ -149,7 +149,7 @@ class PermissionEngine:
             raise KeyError(f"No rule with id={rule_id!r}")
 
     @classmethod
-    def from_yaml(cls, path: str | Path) -> "PermissionEngine":
+    def from_yaml(cls, path: str | Path) -> PermissionEngine:
         """Load a YAML policy file and return a configured :class:`PermissionEngine`.
 
         Example YAML format::
@@ -167,9 +167,10 @@ class PermissionEngine:
                 priority: 10
         """
         from uuid import uuid4
+
         import yaml  # lazy import — yaml is optional at module level
 
-        with open(path, "r", encoding="utf-8") as f:
+        with open(path, encoding="utf-8") as f:
             data = yaml.safe_load(f)
 
         default_raw = data.get("default_decision", "deny")
@@ -200,9 +201,7 @@ class PermissionEngine:
                     permissions=raw["permissions"],
                     effect=raw["effect"].lower(),
                     priority=raw.get("priority", 100),
-                    conditions=[
-                        Condition(**c) for c in raw.get("conditions", [])
-                    ],
+                    conditions=[Condition(**c) for c in raw.get("conditions", [])],
                 )
                 rules.append(rule)
             except (KeyError, ValueError) as exc:
@@ -266,9 +265,8 @@ class PermissionEngine:
         - ``pattern.pattern`` is matched with ``fnmatch.fnmatch`` (glob)
         """
         # Type check
-        if pattern.type != "*":
-            if resource.type != pattern.type:
-                return False
+        if pattern.type != "*" and resource.type != pattern.type:
+            return False
 
         # ID / glob check
         return fnmatch.fnmatch(resource.id, pattern.pattern)

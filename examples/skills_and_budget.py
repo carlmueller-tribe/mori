@@ -12,6 +12,7 @@ Usage:
     cd ~/Projects/Mori
     python examples/skills_and_budget.py
 """
+
 from __future__ import annotations
 
 import asyncio
@@ -21,7 +22,7 @@ from unittest.mock import AsyncMock, MagicMock
 from mori import Mori
 from mori.observability.engine import ObservabilityEngine
 from mori.observability.events import ObservabilityConfig
-from mori.types import Message, ModelResponse, RunStatus, TokenUsage
+from mori.types import Message, ModelResponse, TokenUsage
 
 
 def _mock_adapter() -> object:
@@ -31,8 +32,9 @@ def _mock_adapter() -> object:
     adapter.max_context_tokens = 200_000
     adapter.invoke = AsyncMock(
         return_value=ModelResponse(
-            message=Message(role="assistant",
-                            content="I traced the error and applied a minimal fix."),
+            message=Message(
+                role="assistant", content="I traced the error and applied a minimal fix."
+            ),
             usage=TokenUsage(input_tokens=300, output_tokens=80),
             stop_reason="end_turn",
         )
@@ -47,14 +49,21 @@ async def main() -> None:
 
     class TraceSink:
         realtime = True
+
         async def write(self, e):
             traces.append(e.model_dump())
+
         async def write_batch(self, es):
             traces.extend(e.model_dump() for e in es)
-        async def flush(self): pass
-        async def close(self): pass
+
+        async def flush(self):
+            pass
+
+        async def close(self):
+            pass
 
     import mori.agent as agent_mod
+
     original = agent_mod.AnthropicAdapter
     agent_mod.AnthropicAdapter = MagicMock(return_value=_mock_adapter())
 
@@ -66,9 +75,7 @@ async def main() -> None:
             .budget(total_context_tokens=200_000)
             .build()
         )
-        agent._obs = ObservabilityEngine(
-            sinks=[TraceSink()], config=ObservabilityConfig()
-        )
+        agent._obs = ObservabilityEngine(sinks=[TraceSink()], config=ObservabilityConfig())
         agent._loop._obs = agent._obs
 
         print(f"\n{'━' * 60}")

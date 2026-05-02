@@ -2,14 +2,15 @@
 
 from __future__ import annotations
 
-from typing import Any, AsyncIterator, Literal, Protocol, runtime_checkable
+from collections.abc import AsyncIterator
+from typing import Literal, Protocol, runtime_checkable
 
 from mori.types import (
-    MoriModel,
     ModelRequest,
     ModelResponse,
-    ToolCall,
+    MoriModel,
     TokenUsage,
+    ToolCall,
 )
 
 

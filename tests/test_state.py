@@ -1,6 +1,6 @@
 """Tests for MoriState."""
 
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 
 from mori.runtime.state import MoriState
 from mori.types import Message, RunId, RunStatus, ThreadId
@@ -12,8 +12,8 @@ def _make_state(**overrides) -> MoriState:
         "thread_id": ThreadId("thread_test"),
         "task": "test task",
         "status": RunStatus.RUNNING,
-        "started_at": datetime.now(timezone.utc),
-        "last_progress_at": datetime.now(timezone.utc),
+        "started_at": datetime.now(UTC),
+        "last_progress_at": datetime.now(UTC),
     }
     defaults.update(overrides)
     return MoriState(**defaults)
@@ -63,20 +63,27 @@ def test_state_rejects_extra_fields():
             run_id=RunId("run_test"),
             thread_id=ThreadId("thread_test"),
             task="test",
-            started_at=datetime.now(timezone.utc),
-            last_progress_at=datetime.now(timezone.utc),
+            started_at=datetime.now(UTC),
+            last_progress_at=datetime.now(UTC),
             bogus_field="nope",
         )
 
 
-from mori.types import MemorySlice, MemoryLayer
+from mori.types import MemoryLayer, MemorySlice
+
 
 def test_state_memory_slice_default_none():
     s = _make_state()
     assert s.memory_slice is None
 
+
 def test_state_memory_slice_settable():
     s = _make_state()
-    s.memory_slice = MemorySlice(records=[], total_tokens=0, query="test",
-        layers_searched=[MemoryLayer.WORKING], truncated=False)
+    s.memory_slice = MemorySlice(
+        records=[],
+        total_tokens=0,
+        query="test",
+        layers_searched=[MemoryLayer.WORKING],
+        truncated=False,
+    )
     assert s.memory_slice is not None and s.memory_slice.query == "test"

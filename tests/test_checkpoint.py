@@ -1,20 +1,25 @@
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 
 import pytest
 
 from mori.control.checkpoint import (
-    Checkpoint, FileCheckpoints, InMemoryCheckpoints, SQLiteCheckpoints,
+    FileCheckpoints,
+    InMemoryCheckpoints,
+    SQLiteCheckpoints,
 )
 from mori.runtime.state import MoriState
 from mori.types import RunId, RunStatus, ThreadId
 
 
 def _state(thread_id: str = "t1") -> MoriState:
-    now = datetime.now(timezone.utc)
+    now = datetime.now(UTC)
     return MoriState(
-        run_id=RunId("run_test"), thread_id=ThreadId(thread_id),
-        task="test task", status=RunStatus.RUNNING,
-        started_at=now, last_progress_at=now,
+        run_id=RunId("run_test"),
+        thread_id=ThreadId(thread_id),
+        task="test task",
+        status=RunStatus.RUNNING,
+        started_at=now,
+        last_progress_at=now,
     )
 
 

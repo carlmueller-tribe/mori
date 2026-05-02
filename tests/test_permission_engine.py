@@ -1,23 +1,20 @@
 """Tests for PermissionEngine — TDD, written before implementation."""
+
 from __future__ import annotations
 
 import tempfile
 import textwrap
-from pathlib import Path
 
 import pytest
 
 from mori.permission.engine import PermissionEngine
 from mori.permission.types import (
-    Condition,
-    ConditionType,
     Identity,
     IdentityPattern,
     IdentityType,
     Permission,
     PermissionConfig,
     PermissionExplanation,
-    PermissionResult,
     PermissionRule,
     Resource,
     ResourcePattern,
@@ -25,12 +22,14 @@ from mori.permission.types import (
 )
 from mori.types import PermissionDecision
 
-
 # ---------------------------------------------------------------------------
 # Helpers
 # ---------------------------------------------------------------------------
 
-def _identity(id: str, groups: list[str] | None = None, type: IdentityType = IdentityType.AGENT) -> Identity:
+
+def _identity(
+    id: str, groups: list[str] | None = None, type: IdentityType = IdentityType.AGENT
+) -> Identity:
     return Identity(id=id, name=id, type=type, groups=groups or [])
 
 
@@ -72,6 +71,7 @@ def _deny_rule(
 # 1. test_engine_allow_rule
 # ---------------------------------------------------------------------------
 
+
 @pytest.mark.anyio
 async def test_engine_allow_rule():
     """ALLOW rule for specific identity+resource+permission → result allowed."""
@@ -91,6 +91,7 @@ async def test_engine_allow_rule():
 # ---------------------------------------------------------------------------
 # 2. test_engine_deny_wins
 # ---------------------------------------------------------------------------
+
 
 @pytest.mark.anyio
 async def test_engine_deny_wins():
@@ -112,6 +113,7 @@ async def test_engine_deny_wins():
 # 3. test_engine_default_deny
 # ---------------------------------------------------------------------------
 
+
 @pytest.mark.anyio
 async def test_engine_default_deny():
     """No matching rules → default_decision=DENY → result.allowed is False."""
@@ -130,6 +132,7 @@ async def test_engine_default_deny():
 # ---------------------------------------------------------------------------
 # 4. test_engine_wildcard_identity
 # ---------------------------------------------------------------------------
+
 
 @pytest.mark.anyio
 async def test_engine_wildcard_identity():
@@ -155,6 +158,7 @@ async def test_engine_wildcard_identity():
 # 5. test_engine_glob_resource
 # ---------------------------------------------------------------------------
 
+
 @pytest.mark.anyio
 async def test_engine_glob_resource():
     """ResourcePattern glob pattern='data/*' matches resource id 'data/records'."""
@@ -178,6 +182,7 @@ async def test_engine_glob_resource():
 # ---------------------------------------------------------------------------
 # 6. test_engine_escalate
 # ---------------------------------------------------------------------------
+
 
 @pytest.mark.anyio
 async def test_engine_escalate():
@@ -203,6 +208,7 @@ async def test_engine_escalate():
 # 7. test_engine_can_sync
 # ---------------------------------------------------------------------------
 
+
 def test_engine_can_sync():
     """can() returns bool — True for ALLOW, False for DENY/ESCALATE."""
     allow_rule = _allow_rule()
@@ -217,6 +223,7 @@ def test_engine_can_sync():
 # ---------------------------------------------------------------------------
 # 8. test_engine_explain
 # ---------------------------------------------------------------------------
+
 
 @pytest.mark.anyio
 async def test_engine_explain():
@@ -243,6 +250,7 @@ async def test_engine_explain():
 # ---------------------------------------------------------------------------
 # 9. test_engine_add_remove_rule
 # ---------------------------------------------------------------------------
+
 
 @pytest.mark.anyio
 async def test_engine_add_remove_rule():
@@ -275,6 +283,7 @@ async def test_engine_add_remove_rule():
 # ---------------------------------------------------------------------------
 # 10. test_engine_from_yaml
 # ---------------------------------------------------------------------------
+
 
 @pytest.mark.anyio
 async def test_engine_from_yaml():
@@ -319,6 +328,7 @@ async def test_engine_from_yaml():
 # 11. test_engine_group_match
 # ---------------------------------------------------------------------------
 
+
 @pytest.mark.anyio
 async def test_engine_group_match():
     """IdentityPattern(match='group', value='admins') matches identity with that group."""
@@ -346,6 +356,7 @@ async def test_engine_group_match():
 # 12. test_engine_type_match
 # ---------------------------------------------------------------------------
 
+
 @pytest.mark.anyio
 async def test_engine_type_match():
     """IdentityPattern(match='type', value='user') matches any USER identity."""
@@ -370,6 +381,7 @@ async def test_engine_type_match():
 # ---------------------------------------------------------------------------
 # 13. test_engine_deny_beats_escalate
 # ---------------------------------------------------------------------------
+
 
 @pytest.mark.anyio
 async def test_engine_deny_beats_escalate():
@@ -411,6 +423,7 @@ async def test_engine_deny_beats_escalate():
 # ---------------------------------------------------------------------------
 # 14. test_engine_remove_rule_unknown_id
 # ---------------------------------------------------------------------------
+
 
 def test_engine_remove_rule_unknown_id():
     """remove_rule raises KeyError for an unknown rule ID."""

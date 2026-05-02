@@ -9,8 +9,8 @@ from mori.types import (
     Message,
     ModelResponse,
     RunStatus,
-    ToolCall,
     TokenUsage,
+    ToolCall,
 )
 
 
@@ -86,12 +86,7 @@ def test_builder_registers_tool_with_name():
 def test_builder_config():
     with patch("mori.agent.AnthropicAdapter") as MockAdapter:
         MockAdapter.return_value = AsyncMock()
-        agent = (
-            Mori.builder()
-            .model("anthropic", api_key="test")
-            .config(max_steps=10)
-            .build()
-        )
+        agent = Mori.builder().model("anthropic", api_key="test").config(max_steps=10).build()
         assert agent._loop._control._config.max_steps == 10
 
 

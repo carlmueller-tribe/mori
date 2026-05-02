@@ -3,11 +3,10 @@
 from __future__ import annotations
 
 import secrets
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from typing import Any
 
 from mori.observability.events import (
-    EventSink,
     MoriEvent,
     ObservabilityConfig,
     RunEndEvent,
@@ -28,9 +27,11 @@ class ObservabilityEngine:
         self._all_events: list[MoriEvent] = []
 
     async def emit(self, event: MoriEvent) -> None:
-        if self._config.enabled_event_types is not None:
-            if event.event_type not in self._config.enabled_event_types:
-                return
+        if (
+            self._config.enabled_event_types is not None
+            and event.event_type not in self._config.enabled_event_types
+        ):  # noqa: E501
+            return
 
         self._all_events.append(event)
 
@@ -51,15 +52,19 @@ class ObservabilityEngine:
     def start_trace(self, run_id: RunId) -> TraceId:
         return TraceId(f"trace_{secrets.token_hex(12)}")
 
-    def start_span(self, trace_id: TraceId, name: str, parent_span_id: str | None = None) -> SpanContext:
+    def start_span(
+        self, trace_id: TraceId, name: str, parent_span_id: str | None = None
+    ) -> SpanContext:  # noqa: E501
         return SpanContext(
-            trace_id=trace_id, span_id=f"span_{secrets.token_hex(8)}",
-            parent_span_id=parent_span_id, name=name,
-            start_time=datetime.now(timezone.utc),
+            trace_id=trace_id,
+            span_id=f"span_{secrets.token_hex(8)}",
+            parent_span_id=parent_span_id,
+            name=name,
+            start_time=datetime.now(UTC),
         )
 
     def end_span(self, span: SpanContext) -> None:
-        span.end_time = datetime.now(timezone.utc)
+        span.end_time = datetime.now(UTC)
 
     def get_run_summary(self, run_id: RunId) -> RunSummary:
         run_events = [e for e in self._all_events if e.run_id == run_id]
@@ -90,11 +95,17 @@ class ObservabilityEngine:
 
         avg_step_ms = total_duration_ms / total_steps if total_steps > 0 else 0.0
         return RunSummary(
-            run_id=run_id, status=status, total_steps=total_steps,
-            total_input_tokens=total_input_tokens, total_output_tokens=total_output_tokens,
-            total_tool_calls=total_tool_calls, total_tool_failures=total_tool_failures,
-            total_duration_ms=total_duration_ms, avg_step_duration_ms=avg_step_ms,
-            tools_used=sorted(tools_used), error_summary=errors,
+            run_id=run_id,
+            status=status,
+            total_steps=total_steps,
+            total_input_tokens=total_input_tokens,
+            total_output_tokens=total_output_tokens,
+            total_tool_calls=total_tool_calls,
+            total_tool_failures=total_tool_failures,
+            total_duration_ms=total_duration_ms,
+            avg_step_duration_ms=avg_step_ms,
+            tools_used=sorted(tools_used),
+            error_summary=errors,
         )
 
     async def flush(self) -> None:
@@ -114,5 +125,5 @@ class ObservabilityEngine:
         events = list(self._buffer)
         self._buffer.clear()
         for sink in self._sinks:
-            if not getattr(sink, "realtime", False) is True:
+            if getattr(sink, "realtime", False) is not True:
                 await sink.write_batch(events)

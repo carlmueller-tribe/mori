@@ -1,6 +1,6 @@
 """Tests for RunResult and StepResult."""
 
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 
 from mori.runtime.result import RunResult, StepResult
 from mori.runtime.state import MoriState
@@ -29,8 +29,8 @@ def test_run_result_from_state():
         total_input_tokens=100,
         total_output_tokens=50,
         total_tool_calls=1,
-        started_at=datetime.now(timezone.utc),
-        last_progress_at=datetime.now(timezone.utc),
+        started_at=datetime.now(UTC),
+        last_progress_at=datetime.now(UTC),
     )
     result = RunResult.from_state(state, duration_ms=1500.0)
     assert result.run_id == "run_1"
@@ -49,8 +49,8 @@ def test_run_result_final_output_none_when_no_assistant_message():
         task="test",
         status=RunStatus.FAILED,
         messages=[Message(role="user", content="hi")],
-        started_at=datetime.now(timezone.utc),
-        last_progress_at=datetime.now(timezone.utc),
+        started_at=datetime.now(UTC),
+        last_progress_at=datetime.now(UTC),
     )
     result = RunResult.from_state(state, duration_ms=100.0)
     assert result.final_output is None
@@ -79,8 +79,8 @@ def test_run_result_json_roundtrip():
         step_count=1,
         total_input_tokens=10,
         total_output_tokens=5,
-        started_at=datetime.now(timezone.utc),
-        last_progress_at=datetime.now(timezone.utc),
+        started_at=datetime.now(UTC),
+        last_progress_at=datetime.now(UTC),
     )
     result = RunResult.from_state(state, duration_ms=500.0)
     json_str = result.model_dump_json()

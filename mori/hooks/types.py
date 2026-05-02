@@ -1,8 +1,10 @@
 """Hook system types."""
+
 from __future__ import annotations
 
+from collections.abc import Awaitable, Callable
 from datetime import datetime
-from typing import Any, Awaitable, Callable
+from typing import Any
 
 from mori.types import MoriModel
 

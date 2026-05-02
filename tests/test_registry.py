@@ -3,7 +3,7 @@
 import pytest
 
 from mori.tools.registry import ToolRegistry
-from mori.types import ToolSource, ToolInvocationError, SchemaValidationError
+from mori.types import ToolInvocationError, ToolSource
 
 
 def test_register_sync_function():

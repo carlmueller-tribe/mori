@@ -61,7 +61,9 @@ async def main():
             command="wc",
             description="Count lines/words/bytes. Examples: '-l tests/*.py', '-l mori/types.py'",
             args_format="raw",
-            args_schema={"command": {"type": "string", "description": "Flags and file paths for wc"}},
+            args_schema={
+                "command": {"type": "string", "description": "Flags and file paths for wc"}
+            },
             cwd=PROJECT_ROOT,
         )
         .cli(
@@ -69,7 +71,9 @@ async def main():
             command="head",
             description="Show first N lines of a file. Example: '-20 mori/agent.py'",
             args_format="raw",
-            args_schema={"command": {"type": "string", "description": "Flags and file path for head"}},
+            args_schema={
+                "command": {"type": "string", "description": "Flags and file path for head"}
+            },
             cwd=PROJECT_ROOT,
         )
         # Structured CLI tool — subcommand format fits git perfectly
@@ -79,7 +83,10 @@ async def main():
             description="Run git commands. 'action' is the subcommand.",
             args_format="subcommand",
             args_schema={
-                "action": {"type": "string", "description": "Git subcommand (log, status, diff, show, blame)"},
+                "action": {
+                    "type": "string",
+                    "description": "Git subcommand (log, status, diff, show, blame)",
+                },
                 "oneline": {"type": "boolean", "description": "One line per commit"},
                 "stat": {"type": "boolean", "description": "Show diffstat"},
                 "n": {"type": "string", "description": "Number of commits"},
@@ -106,8 +113,10 @@ async def main():
         result = await agent.run(question)
 
         print(f"\n  A: {result.final_output}")
-        print(f"  [{result.total_steps} steps, {result.total_tool_calls} tool calls, "
-              f"{result.total_usage.total} tokens]\n")
+        print(
+            f"  [{result.total_steps} steps, {result.total_tool_calls} tool calls, "
+            f"{result.total_usage.total} tokens]\n"
+        )
 
     await agent.close()
 
@@ -117,7 +126,7 @@ async def main():
     tool_events = [e for e in events if e["event_type"] == "tool.invoke"]
 
     print(f"{'━' * 70}")
-    print(f"  Session Summary (from explorer_traces.jsonl)")
+    print("  Session Summary (from explorer_traces.jsonl)")
     print(f"{'━' * 70}")
     print(f"  Total events: {len(events)}")
     print(f"  Total tool invocations: {len(tool_events)}")

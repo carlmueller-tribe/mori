@@ -4,19 +4,21 @@ import json
 from pathlib import Path
 from unittest.mock import AsyncMock, patch
 
-import pytest
-
 from mori import Mori
-from mori.types import Message, ModelResponse, RunStatus, ToolCall, TokenUsage
+from mori.types import Message, ModelResponse, RunStatus, TokenUsage, ToolCall
 
 
 def _tool_response(tool_id: str, name: str, args: dict) -> ModelResponse:
     return ModelResponse(
-        message=Message(role="assistant", content="",
-            tool_calls=[ToolCall(id=tool_id, name=name, arguments=args)]),
+        message=Message(
+            role="assistant",
+            content="",
+            tool_calls=[ToolCall(id=tool_id, name=name, arguments=args)],
+        ),
         usage=TokenUsage(input_tokens=50, output_tokens=20),
         stop_reason="tool_use",
     )
+
 
 def _text_response(text: str) -> ModelResponse:
     return ModelResponse(
@@ -32,10 +34,12 @@ async def test_v02_exit_test_cli_and_observability(tmp_path):
 
     with patch("mori.agent.AnthropicAdapter") as MockAdapter:
         mock_adapter = AsyncMock()
-        mock_adapter.invoke = AsyncMock(side_effect=[
-            _tool_response("call_1", "echo_tool", {"0": "hello from CLI"}),
-            _text_response("The CLI tool returned: hello from CLI"),
-        ])
+        mock_adapter.invoke = AsyncMock(
+            side_effect=[
+                _tool_response("call_1", "echo_tool", {"0": "hello from CLI"}),
+                _text_response("The CLI tool returned: hello from CLI"),
+            ]
+        )
         MockAdapter.return_value = mock_adapter
 
         agent = (
@@ -71,11 +75,13 @@ async def test_v02_mixed_native_and_cli_tools(tmp_path):
 
     with patch("mori.agent.AnthropicAdapter") as MockAdapter:
         mock_adapter = AsyncMock()
-        mock_adapter.invoke = AsyncMock(side_effect=[
-            _tool_response("call_1", "add", {"a": 3, "b": 5}),
-            _tool_response("call_2", "echo_tool", {"0": "result is 8"}),
-            _text_response("Added 3+5=8 and echoed it"),
-        ])
+        mock_adapter.invoke = AsyncMock(
+            side_effect=[
+                _tool_response("call_1", "add", {"a": 3, "b": 5}),
+                _tool_response("call_2", "echo_tool", {"0": "result is 8"}),
+                _text_response("Added 3+5=8 and echoed it"),
+            ]
+        )
         MockAdapter.return_value = mock_adapter
 
         agent = (
