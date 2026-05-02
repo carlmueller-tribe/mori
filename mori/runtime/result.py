@@ -46,7 +46,7 @@ class RunResult(MoriModel):
     checkpoint_id: CheckpointId | None = None
 
     @staticmethod
-    def from_state(state: MoriState, duration_ms: float) -> RunResult:
+    def from_state(state: MoriState, duration_ms: float, checkpoint_id: CheckpointId | None = None) -> RunResult:
         """Build a RunResult from the final MoriState."""
         final_output: str | None = None
         for msg in reversed(state.messages):
@@ -68,4 +68,5 @@ class RunResult(MoriModel):
             ),
             total_tool_calls=state.total_tool_calls,
             total_duration_ms=duration_ms,
+            checkpoint_id=checkpoint_id,
         )

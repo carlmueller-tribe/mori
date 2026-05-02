@@ -45,6 +45,11 @@ class AgentLoop:
         memory: Any | None = None,
         skills: Any | None = None,
         budget: Any | None = None,
+        checkpointer: Any | None = None,
+        checkpoint_every_n_steps: int = 5,
+        permission: Any | None = None,
+        identity: Any | None = None,
+        hooks: Any | None = None,
     ) -> None:
         self._model = model
         self._tools = tools
@@ -56,6 +61,11 @@ class AgentLoop:
         self._memory = memory
         self._skills = skills
         self._budget = budget
+        self._checkpointer = checkpointer
+        self._checkpoint_every_n_steps = checkpoint_every_n_steps
+        self._permission = permission
+        self._identity = identity
+        self._hooks = hooks
 
     async def _emit(self, event: MoriEvent) -> None:
         if self._obs:
@@ -276,6 +286,25 @@ class AgentLoop:
         ))
 
     async def run(self, task: str, thread_id: ThreadId | None = None, context: dict[str, Any] | None = None) -> RunResult:
+        state = self._init_state(task, thread_id, context)
+        return await self._run_from_state(state)
+
+    async def resume(self, thread_id: ThreadId, input: dict[str, Any]) -> RunResult:
+        if not self._checkpointer:
+            raise ValueError("Cannot resume: no checkpointer configured")
+        cp = await self._checkpointer.load_latest(thread_id)
+        if cp is None:
+            raise ValueError(f"No checkpoint found for thread {thread_id}")
+        state = cp.restore()
+        approved = input.get("approved", False)
+        msg = f"[Resume] {'Approved' if approved else 'Rejected'}. Details: {input}"
+        state.messages.append(Message(role="user", content=msg))
+        state.status = RunStatus.RUNNING
+        state.paused_reason = None
+        state.paused_tool_call = None
+        return await self._run_from_state(state)
+
+    async def _run_from_state(self, state: MoriState) -> RunResult:
         from mori.observability.events import (
             BoundViolationEvent,
             RunEndEvent,
@@ -284,12 +313,11 @@ class AgentLoop:
             StepStartEvent,
         )
 
-        state = self._init_state(task, thread_id, context)
         start_time = time.monotonic()
 
         await self._emit(RunStartEvent(
             event_id=f"evt_{_uid()}", timestamp=datetime.now(timezone.utc),
-            run_id=state.run_id, task=task,
+            run_id=state.run_id, task=state.task,
             config={"max_steps": self._control._config.max_steps},
         ))
 
@@ -311,6 +339,10 @@ class AgentLoop:
                 state.status = RunStatus.FAILED
                 break
 
+            # Periodic checkpoint
+            if self._checkpointer and state.step_count % self._checkpoint_every_n_steps == 0:
+                await self._checkpointer.save(state)
+
             await self._emit(StepStartEvent(
                 event_id=f"evt_{_uid()}", timestamp=datetime.now(timezone.utc),
                 run_id=state.run_id, step_id=step_id, step_number=state.step_count, phase=Phase.PLAN,
@@ -320,6 +352,11 @@ class AgentLoop:
             await self._pre_plan_compact(state)
             await self._phase_plan(state)
             await self._phase_act(state)
+
+            # Check if _phase_act caused a PAUSED state (e.g. permission ESCALATE)
+            if state.status == RunStatus.PAUSED:
+                break
+
             outcome = self._phase_evaluate(state)
             await self._phase_update(state)
 
@@ -339,6 +376,11 @@ class AgentLoop:
 
         elapsed_ms = (time.monotonic() - start_time) * 1000
 
+        # Save final checkpoint (always, if checkpointer is present)
+        checkpoint_id = None
+        if self._checkpointer:
+            checkpoint_id = await self._checkpointer.save(state)
+
         await self._emit(RunEndEvent(
             event_id=f"evt_{_uid()}", timestamp=datetime.now(timezone.utc),
             run_id=state.run_id, status=state.status, total_steps=state.step_count,
@@ -346,11 +388,11 @@ class AgentLoop:
             duration_ms=elapsed_ms,
         ))
 
-        # Write episodic summary
-        if self._memory:
+        # Write episodic summary — skip if PAUSED
+        if self._memory and state.status != RunStatus.PAUSED:
             from mori.observability.events import MemoryWriteEvent
             from mori.types import MemoryRecord, MemoryRecordId, MemoryLayer
-            run_result = RunResult.from_state(state, duration_ms=elapsed_ms)
+            run_result = RunResult.from_state(state, duration_ms=elapsed_ms, checkpoint_id=checkpoint_id)
             tools_used: set[str] = set()
             for msg in state.messages:
                 if msg.tool_calls:
@@ -380,4 +422,4 @@ class AgentLoop:
         if self._obs:
             await self._obs.flush()
 
-        return RunResult.from_state(state, duration_ms=elapsed_ms)
+        return RunResult.from_state(state, duration_ms=elapsed_ms, checkpoint_id=checkpoint_id)
