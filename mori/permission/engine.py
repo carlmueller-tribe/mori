@@ -153,9 +153,9 @@ class PermissionEngine:
         """Append a rule to the engine's policy."""
         self._config.rules.append(rule)
 
-    def remove_rule(self, rule: PermissionRule) -> None:
-        """Remove a rule from the engine's policy by object identity."""
-        self._config.rules = [r for r in self._config.rules if r is not rule]
+    def remove_rule(self, rule_id: str) -> None:
+        """Remove a rule from the engine's policy by rule ID."""
+        self._config.rules = [r for r in self._config.rules if r.id != rule_id]
 
     @classmethod
     def from_yaml(cls, path: str | Path) -> "PermissionEngine":
@@ -175,6 +175,7 @@ class PermissionEngine:
                 effect: allow
                 priority: 10
         """
+        from uuid import uuid4
         import yaml  # lazy import — yaml is optional at module level
 
         with open(path, "r") as f:
@@ -195,6 +196,7 @@ class PermissionEngine:
                 resource_type = ResourceType(resource_type_raw.lower())
 
             rule = PermissionRule(
+                id=raw.get("id", str(uuid4())),
                 identity=IdentityPattern(
                     match=identity_data["match"],
                     value=identity_data["value"],

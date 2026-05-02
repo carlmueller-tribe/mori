@@ -254,13 +254,19 @@ async def test_engine_add_remove_rule():
     result = await engine.check(_identity("agent:bot"), _resource("deploy"), Permission.READ)
     assert result.decision == PermissionDecision.DENY
 
-    rule = _allow_rule()
+    rule = PermissionRule(
+        id="test-rule",
+        identity=IdentityPattern(match="identity", value="agent:bot"),
+        resource=ResourcePattern(type=ResourceType.TOOL, pattern="deploy"),
+        permissions="r",
+        effect="allow",
+    )
     engine.add_rule(rule)
 
     result = await engine.check(_identity("agent:bot"), _resource("deploy"), Permission.READ)
     assert result.decision == PermissionDecision.ALLOW
 
-    engine.remove_rule(rule)
+    engine.remove_rule("test-rule")
 
     result = await engine.check(_identity("agent:bot"), _resource("deploy"), Permission.READ)
     assert result.decision == PermissionDecision.DENY

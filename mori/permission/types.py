@@ -3,6 +3,7 @@ from __future__ import annotations
 
 from typing import Any, Literal
 from enum import Enum
+from uuid import uuid4
 from pydantic import Field
 
 from mori.types import MoriModel, PermissionDecision
@@ -72,6 +73,7 @@ class IdentityPattern(MoriModel):
 
 
 class PermissionRule(MoriModel):
+    id: str = Field(default_factory=lambda: str(uuid4()))
     resource: ResourcePattern
     identity: IdentityPattern
     permissions: str      # "rwx", "r--", "r-x"
