@@ -77,7 +77,10 @@ async def main():
             description="Run git commands. 'action' is the subcommand (log, status, diff, show, etc.)",
             args_format="subcommand",
             args_schema={
-                "action": {"type": "string", "description": "Git subcommand (log, status, diff, show, blame, etc.)"},
+                "action": {
+                    "type": "string",
+                    "description": "Git subcommand (log, status, diff, show, blame, etc.)",
+                },
                 "oneline": {"type": "boolean", "description": "One line per commit (for log)"},
                 "n": {"type": "string", "description": "Number of commits to show"},
                 "stat": {"type": "boolean", "description": "Show diffstat"},
@@ -104,8 +107,10 @@ async def main():
         result = await agent.run(task)
 
         print(f"\n  Answer: {result.final_output}")
-        print(f"  [{result.total_steps} steps, {result.total_tool_calls} tool calls, "
-              f"{result.total_usage.total} tokens]")
+        print(
+            f"  [{result.total_steps} steps, {result.total_tool_calls} tool calls, "
+            f"{result.total_usage.total} tokens]"
+        )
 
     await agent.close()
 

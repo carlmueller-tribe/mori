@@ -56,7 +56,9 @@ class CLIRunner:
             stderr = result.stderr.decode("utf-8", errors="replace") if result.stderr else ""
 
             if len(stdout.encode()) > config.max_output_bytes:
-                stdout = stdout.encode()[:config.max_output_bytes].decode("utf-8", errors="replace")
+                stdout = stdout.encode()[: config.max_output_bytes].decode(
+                    "utf-8", errors="replace"
+                )
 
             if result.returncode == 0:
                 return ToolResult(

@@ -49,7 +49,7 @@ async def main():
     )
 
     result = await agent.run(
-        "Add 1+1, then add 2+2, then add 3+3, then add 4+4, then add 5+5. " "Report all results."
+        "Add 1+1, then add 2+2, then add 3+3, then add 4+4, then add 5+5. Report all results."
     )
 
     print(f"\n  Status: {result.status}")

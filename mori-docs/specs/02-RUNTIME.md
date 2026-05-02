@@ -97,7 +97,7 @@ class LoopConfig(MoriModel):
 ```python
 async def run(self, task, thread_id=None, context=None) -> RunResult:
     state = self._init_state(task, thread_id, context)
-    
+
     # Restore from checkpoint if thread exists
     if self.checkpointer and thread_id:
         saved = await self.checkpointer.load_latest(thread_id)

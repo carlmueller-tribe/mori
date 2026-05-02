@@ -186,12 +186,12 @@ async def main() -> None:
 
     final = await memory.stats()
     print(f"\n  {'Layer':<16} {'Records':>7}  {'~Tokens':>8}")
-    print(f"  {'─'*16} {'─'*7}  {'─'*8}")
+    print(f"  {'─' * 16} {'─' * 7}  {'─' * 8}")
     for layer in MemoryLayer:
         count = final.records_per_layer[layer]
         tokens = final.estimated_tokens_per_layer[layer]
         print(f"  {layer.value:<16} {count:>7}  {tokens:>8}")
-    print(f"  {'─'*16} {'─'*7}  {'─'*8}")
+    print(f"  {'─' * 16} {'─' * 7}  {'─' * 8}")
     print(f"  {'TOTAL':<16} {final.total_records:>7}")
 
     await memory.close()

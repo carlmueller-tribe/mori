@@ -144,8 +144,7 @@ async def main() -> None:
     for i, ep in enumerate(episodes, 1):
         print(f"  [{i}] {ep.content[:120]}")
         print(
-            f"       written: {ep.created_at.strftime('%H:%M:%S')} UTC  "
-            f"provenance: {ep.provenance}"
+            f"       written: {ep.created_at.strftime('%H:%M:%S')} UTC  provenance: {ep.provenance}"
         )
         print()
 

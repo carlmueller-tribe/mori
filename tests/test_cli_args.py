@@ -115,6 +115,7 @@ def test_grep_realistic():
 
 # ── Raw format ───────────────────────────────────────────────
 
+
 def test_raw_basic():
     result = format_args({"command": "grep -rn TODO mori/"}, format="raw")
     assert result == ["grep", "-rn", "TODO", "mori/"]
