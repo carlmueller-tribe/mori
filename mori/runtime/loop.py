@@ -561,8 +561,8 @@ class AgentLoop:
                         tools_used.add(tc.name)
             ep_content = (
                 f'Run "{state.task[:100]}": {state.status.value} in {state.step_count} steps. '
-                f'Tools: {", ".join(sorted(tools_used)) or "none"}. '
-                f'Result: {(run_result.final_output or "")[:200]}'
+                f"Tools: {', '.join(sorted(tools_used)) or 'none'}. "
+                f"Result: {(run_result.final_output or '')[:200]}"
             )
             record = MemoryRecord(
                 record_id=MemoryRecordId(f"mem_{secrets.token_hex(12)}"),

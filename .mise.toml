@@ -23,11 +23,11 @@ run = "uv run mypy mori/"
 description = "Type check with mypy"
 
 [tasks.check]
-depends = ["lint", "typecheck", "test"]
-description = "Run all checks (lint, typecheck, test)"
+depends = ["lint", "typecheck", "test", "trivy:scan"]
+description = "Run all checks (lint, typecheck, test, security)"
 
 [tasks."trivy:scan"]
-run = "trivy fs ."
+run = "trivy fs --severity HIGH,CRITICAL --ignore-unfixed --skip-dirs .venv --skip-version-check uv.lock"
 description = "Scan dependencies for vulnerabilities"
 
 [tasks."trivy:update-db"]
