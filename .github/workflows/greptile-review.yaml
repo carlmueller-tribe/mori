@@ -8,6 +8,7 @@ on:
 jobs:
   review:
     name: Greptile review
+    if: ${{ secrets.GREPTILE_API_KEY != '' }}
     runs-on: ubuntu-latest
     permissions:
       pull-requests: write
