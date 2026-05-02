@@ -1,0 +1,47 @@
+site_name: Mori
+site_description: The cognitive environment for LLM agents
+docs_dir: mori-docs
+theme:
+  name: material
+  features:
+    - navigation.tabs
+    - navigation.sections
+    - toc.integrate
+    - content.code.copy
+  palette:
+    scheme: slate
+    primary: green
+
+nav:
+  - Home: index.md
+  - Architecture:
+    - Overview: architecture/index.md
+    - Runtime: architecture/runtime.md
+    - Memory: architecture/memory.md
+    - Skills: architecture/skills.md
+    - Budget Manager: architecture/budget.md
+    - Observability: architecture/observability.md
+    - Tools & Protocols: architecture/tools-and-protocols.md
+    - Control: architecture/control.md
+    - Model Adapters: architecture/model-adapters.md
+  - Version History:
+    - Timeline: history/index.md
+    - "v0.1 — It Runs": history/v01-it-runs.md
+    - "v0.2 — It Sees": history/v02-it-sees.md
+    - "v0.3 — It Remembers": history/v03-it-remembers.md
+    - "v0.4 — It Learns": history/v04-it-learns.md
+    - "v0.5 — It's Governed": history/v05-its-governed.md
+    - V1 Roadmap: history/v1-roadmap.md
+
+markdown_extensions:
+  - admonition
+  - pymdownx.details
+  - pymdownx.superfences:
+      custom_fences:
+        - name: mermaid
+          class: mermaid
+          format: !!python/name:pymdownx.superfences.fence_code_format
+  - pymdownx.tabbed:
+      alternate_style: true
+  - toc:
+      permalink: true

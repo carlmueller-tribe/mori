@@ -25,6 +25,11 @@ anthropic = ["anthropic>=0.40,<1.0"]
 openai = ["openai>=1.50,<2.0"]
 postgres = ["asyncpg>=0.29", "pgvector>=0.3"]
 langgraph = ["langgraph>=0.2"]
+docs = [
+    "mkdocs>=1.6",
+    "mkdocs-material>=9.5",
+    "pymdown-extensions>=10.0",
+]
 dev = [
     "pytest>=8.0",
     "pytest-asyncio>=0.24",
