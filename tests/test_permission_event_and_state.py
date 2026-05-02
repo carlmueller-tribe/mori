@@ -6,7 +6,7 @@ import pytest
 
 from mori.observability.events import PermissionCheckEvent
 from mori.runtime.state import MoriState
-from mori.types import RunId, ThreadId
+from mori.types import RunId, ThreadId, ToolCall
 
 
 # ── Helpers ──────────────────────────────────────────────────
@@ -73,7 +73,7 @@ def test_moristate_paused_tool_call_default():
 def test_moristate_paused_fields_settable():
     state = make_state(
         paused_reason="tool blocked",
-        paused_tool_call={"name": "delete_file"},
+        paused_tool_call=ToolCall(id="tc1", name="delete_file", arguments={}),
     )
     assert state.paused_reason == "tool blocked"
-    assert state.paused_tool_call == {"name": "delete_file"}
+    assert state.paused_tool_call == ToolCall(id="tc1", name="delete_file", arguments={})
