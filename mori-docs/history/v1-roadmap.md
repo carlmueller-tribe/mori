@@ -1,7 +1,8 @@
 # V1 Roadmap
 
-V1 is the complete, production-ready Mori — all 13 specs implemented, with a full governance
-layer, AIUC-1 compliance primitives, a plugin/hook system, and integration documentation.
+V1 is the complete, production-ready Mori — all 14 specs implemented, with a full governance
+layer, AIUC-1 compliance primitives, a plugin/hook system, Temporal-backed durable execution,
+and integration documentation.
 
 ## Remaining Specs
 
@@ -12,6 +13,7 @@ layer, AIUC-1 compliance primitives, a plugin/hook system, and integration docum
 | 11 | Integration Patterns | Cross-module flows, startup sequences, multi-agent patterns, testing guide |
 | 12 | AIUC-1 Compliance | Risk taxonomy, PII guard, IP guard, evidence exporter, `ComplianceSummary` |
 | 13 | Pi Patterns | Tree sessions, context compaction patterns, AGENTS.md loader, steering, skills compat |
+| 14 | Resilience & Temporal | Temporal-backed `CheckpointStore`, phase Activities, Signal-based PAUSE/RESUME, hook Activities |
 
 ## Complete V1 Module Set
 
@@ -34,6 +36,7 @@ graph TD
     Obs --> Sinks["Stdout · JSONL · OTLP"]
     Memory --> Backends["InMemory · SQLite\n· Postgres (future)"]
     Loop --> Compliance["AIUC-1 Guards"]
+    Loop -.->|"opt-in"| Temporal["Temporal\nTemporalCheckpointStore\nPhase Activities"]
 ```
 
 ## AIUC-1 Compliance Primitives (Spec 12)

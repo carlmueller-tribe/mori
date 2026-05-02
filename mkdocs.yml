@@ -28,6 +28,7 @@ nav:
     - Tools & Protocols: architecture/tools-and-protocols.md
     - Control: architecture/control.md
     - Model Adapters: architecture/model-adapters.md
+    - Resilience & Temporal: architecture/resilience.md
   - Version History:
     - Timeline: history/index.md
     - "v0.1 — It Runs": history/v01-it-runs.md

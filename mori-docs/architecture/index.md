@@ -101,3 +101,4 @@ return Mori(loop, registry, obs, ...)
 | 11 | Integration | [V1 Roadmap](../history/v1-roadmap.md) | 📋 |
 | 12 | AIUC-1 Compliance | [V1 Roadmap](../history/v1-roadmap.md) | 📋 |
 | 13 | Pi Patterns | [V1 Roadmap](../history/v1-roadmap.md) | 📋 |
+| 14 | Resilience & Temporal | [Resilience & Temporal](resilience.md) | 📋 |

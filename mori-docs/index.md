@@ -89,6 +89,7 @@ graph TD
 | Plugin System | V1 | Framework adapters (LangGraph, CrewAI), third-party extension API |
 | Integration Patterns | V1 | Multi-agent patterns, startup sequences, long-running agent recipes |
 | Pi Patterns | V1 | Tree sessions, steering, AGENTS.md loader, cross-agent skill negotiation |
+| [Resilience & Temporal](architecture/resilience.md) | V1 | Temporal-backed durable execution — `TemporalCheckpointStore`, phase Activities, Signal-based PAUSE/RESUME |
 
 ## Quickstart
 
