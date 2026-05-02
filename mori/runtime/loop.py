@@ -240,13 +240,16 @@ class AgentLoop:
         from mori.observability.events import PermissionCheckEvent, ToolInvokeEvent, ToolResultEvent
 
         for call in last_msg.tool_calls:
-            # Permission check (if engine and identity configured)
-            if self._permission and self._identity:
-                from mori.permission.types import Permission, Resource, ResourceType
+            # Permission check (if engine configured)
+            if self._permission:
+                from mori.permission.types import Identity, IdentityType, Permission, Resource, ResourceType
                 from mori.types import PermissionDecision
 
+                effective_identity = self._identity or Identity(
+                    id="agent:anonymous", name="anonymous", type=IdentityType.AGENT,
+                )
                 perm_result = await self._permission.check(
-                    self._identity,
+                    effective_identity,
                     Resource(type=ResourceType.TOOL, id=call.name),
                     Permission.EXECUTE,
                 )
@@ -254,7 +257,7 @@ class AgentLoop:
                 await self._emit(PermissionCheckEvent(
                     event_id=f"evt_{_uid()}", timestamp=datetime.now(timezone.utc),
                     run_id=state.run_id,
-                    identity_id=self._identity.id,
+                    identity_id=effective_identity.id,
                     resource_id=call.name,
                     permission=Permission.EXECUTE.value,
                     decision=perm_result.decision.value,

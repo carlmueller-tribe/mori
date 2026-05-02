@@ -36,8 +36,10 @@ class PermissionEngine:
     5. Otherwise fall back to ``config.default_decision``.
     """
 
-    def __init__(self, config: PermissionConfig) -> None:
+    def __init__(self, config: PermissionConfig | None = None) -> None:
         # Work on a mutable copy so mutations don't alias the config list.
+        if config is None:
+            config = PermissionConfig()
         self._config = config.model_copy(deep=True)
 
     # ------------------------------------------------------------------
@@ -134,6 +136,10 @@ class PermissionEngine:
     def add_rule(self, rule: PermissionRule) -> None:
         """Append a rule to the engine's policy."""
         self._config.rules.append(rule)
+
+    def load_rules(self, rules: list[PermissionRule]) -> None:
+        """Replace all current rules with the provided list."""
+        self._config.rules = list(rules)
 
     def remove_rule(self, rule_id: str) -> None:
         """Remove a rule from the engine's policy by rule ID."""
