@@ -28,6 +28,7 @@ if TYPE_CHECKING:
     from mori.control.bounds import ControlBounds
     from mori.observability.engine import ObservabilityEngine
     from mori.observability.events import MoriEvent
+    from mori.runtime.adapter import RuntimeAdapter
 
 
 def _uid() -> str:
@@ -51,6 +52,7 @@ class AgentLoop:
         permission: Any | None = None,
         identity: Any | None = None,
         hooks: Any | None = None,
+        runtime: RuntimeAdapter | None = None,
     ) -> None:
         self._model = model
         self._tools = tools
@@ -68,6 +70,7 @@ class AgentLoop:
         self._permission = permission
         self._identity = identity
         self._hooks = hooks
+        self._runtime = runtime
 
     async def _emit(self, event: MoriEvent) -> None:
         if self._obs:
@@ -403,6 +406,8 @@ class AgentLoop:
         self, task: str, thread_id: ThreadId | None = None, context: dict[str, Any] | None = None
     ) -> RunResult:  # noqa: E501
         state = self._init_state(task, thread_id, context)
+        if self._runtime is not None:
+            return await self._runtime.run(task, state, self._tools, self._memory, self._skills)
         return await self._run_from_state(state)
 
     async def resume(self, thread_id: ThreadId, input: dict[str, Any]) -> RunResult:
