@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import asyncio
 from typing import cast
 
 
@@ -22,7 +23,10 @@ class VoyageAIEmbedder:
     async def embed(self, texts: list[str]) -> list[list[float]]:
         if not texts:
             return []
-        result = self._client.embed(texts, model=self._model)
+        loop = asyncio.get_event_loop()
+        result = await loop.run_in_executor(
+            None, lambda: self._client.embed(texts, model=self._model)
+        )
         return cast(list[list[float]], result.embeddings)
 
     @property

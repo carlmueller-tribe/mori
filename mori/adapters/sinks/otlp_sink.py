@@ -2,17 +2,6 @@
 
 from __future__ import annotations
 
-try:
-    from opentelemetry.exporter.otlp.proto.grpc.trace_exporter import (
-        OTLPSpanExporter,
-    )
-    from opentelemetry.sdk.trace import TracerProvider
-    from opentelemetry.sdk.trace.export import BatchSpanProcessor
-except ImportError as e:
-    raise ImportError(
-        "OTLPSink requires opentelemetry packages. Install with: pip install 'mori[otlp]'"
-    ) from e
-
 from mori.observability.events import MoriEvent
 
 
@@ -22,6 +11,14 @@ class OTLPSink:
     realtime: bool = False
 
     def __init__(self, endpoint: str = "http://localhost:4317") -> None:
+        try:
+            from opentelemetry.exporter.otlp.proto.grpc.trace_exporter import OTLPSpanExporter
+            from opentelemetry.sdk.trace import TracerProvider
+            from opentelemetry.sdk.trace.export import BatchSpanProcessor
+        except ImportError as e:
+            raise ImportError(
+                "OTLPSink requires opentelemetry packages. Install with: pip install 'mori[otlp]'"
+            ) from e
         exporter = OTLPSpanExporter(endpoint=endpoint)
         self._provider = TracerProvider()
         self._provider.add_span_processor(BatchSpanProcessor(exporter))
@@ -40,8 +37,25 @@ class OTLPSink:
             await self.write(event)
 
     async def flush(self) -> None:
-        self._provider.force_flush()
+        ok = self._provider.force_flush()
+        if not ok:
+            import warnings
+
+            warnings.warn(
+                "OTLPSink: force_flush() returned False — some spans may not have been exported.",
+                RuntimeWarning,
+                stacklevel=2,
+            )
 
     async def close(self) -> None:
-        self._provider.force_flush()
+        ok = self._provider.force_flush()
+        if not ok:
+            import warnings
+
+            warnings.warn(
+                "OTLPSink: force_flush() returned False during close"
+                " — some spans may not have been exported.",
+                RuntimeWarning,
+                stacklevel=2,
+            )
         self._provider.shutdown()
