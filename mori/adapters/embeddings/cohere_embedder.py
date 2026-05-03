@@ -20,7 +20,7 @@ class CohereEmbedder:
         input_type: str = "search_document",
     ) -> None:
         try:
-            import cohere  # type: ignore[import-not-found]
+            import cohere
         except ImportError as e:
             raise ImportError(
                 "CohereEmbedder requires cohere. Install with: pip install 'mori[cohere]'"
@@ -42,7 +42,7 @@ class CohereEmbedder:
         embeddings = response.embeddings
         if hasattr(embeddings, "float") and embeddings.float is not None:
             return list(embeddings.float)
-        return list(embeddings)  # type: ignore[arg-type]
+        return list(embeddings)
 
     @property
     def dimensions(self) -> int:
