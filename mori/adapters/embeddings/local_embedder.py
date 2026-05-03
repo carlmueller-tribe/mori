@@ -23,7 +23,7 @@ class SentenceTransformerEmbedder:
     async def embed(self, texts: list[str]) -> list[list[float]]:
         if not texts:
             return []
-        loop = asyncio.get_event_loop()
+        loop = asyncio.get_running_loop()
         embeddings = await loop.run_in_executor(
             None, lambda: self._model.encode(texts, convert_to_numpy=True)
         )

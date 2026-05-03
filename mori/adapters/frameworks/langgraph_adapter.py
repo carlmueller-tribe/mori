@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import time
 from collections.abc import AsyncIterator, Callable
 from typing import Any
 
@@ -35,8 +36,6 @@ class LangGraphAdapter:
         memory: Any | None,
         skills: Any | None,
     ) -> RunResult:
-        import time
-
         start = time.monotonic()
 
         graph = self._build_graph(task, tools, memory, skills)
