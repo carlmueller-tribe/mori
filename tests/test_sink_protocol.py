@@ -26,3 +26,11 @@ def test_observability_engine_accepts_sink_list():
 def test_observability_engine_rejects_non_sink():
     with pytest.raises(TypeError, match="does not satisfy Sink protocol"):
         ObservabilityEngine(sinks=[object()])
+
+
+def test_otlp_sink_import_path():
+    """OTLPSink lives in mori.adapters.sinks.otlp_sink."""
+    pytest.importorskip("opentelemetry", reason="opentelemetry not installed")
+    from mori.adapters.sinks.otlp_sink import OTLPSink
+
+    assert OTLPSink is not None
