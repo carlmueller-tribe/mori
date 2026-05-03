@@ -41,8 +41,8 @@ class CohereEmbedder:
         )
         embeddings = response.embeddings
         if hasattr(embeddings, "float") and embeddings.float is not None:
-            return list(embeddings.float)
-        return list(embeddings)
+            return [list(map(float, row)) for row in embeddings.float]
+        return [list(map(float, row)) for row in embeddings]
 
     @property
     def dimensions(self) -> int:
