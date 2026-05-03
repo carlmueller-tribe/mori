@@ -1,6 +1,7 @@
 """Tests for ObservabilityEngine — buffered event dispatch."""
 
 from datetime import UTC, datetime
+from unittest.mock import AsyncMock
 
 import pytest
 
@@ -37,8 +38,6 @@ class SpySink:
     realtime: bool = False
 
     def __init__(self) -> None:
-        from unittest.mock import AsyncMock
-
         self.write = AsyncMock()
         self.write_batch = AsyncMock()
         self.flush = AsyncMock()
