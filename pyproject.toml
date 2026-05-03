@@ -68,8 +68,10 @@ module = [
     "anthropic.*",
     "voyageai.*",
     "openai.*",
+    "cohere.*",
     "langgraph.*",
     "opentelemetry.*",
+    "sentence_transformers.*",
     "yaml",
 ]
 ignore_missing_imports = true
