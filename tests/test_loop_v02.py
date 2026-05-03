@@ -50,6 +50,8 @@ def registry_with_add():
 
 
 class CollectorSink:
+    realtime = False
+
     def __init__(self):
         self.events = []
 

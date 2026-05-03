@@ -333,3 +333,7 @@ class SchemaValidationError(ToolError):
 
 class ServerUnavailable(ToolError):
     pass
+
+
+class MoriConfigError(MoriError):
+    """Raised when Mori is misconfigured at build time."""
