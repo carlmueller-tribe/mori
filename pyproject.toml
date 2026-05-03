@@ -88,3 +88,8 @@ warn_unused_ignores = false
 init_forbid_extra = true
 init_typed = true
 warn_required_dynamic_aliases = true
+
+[dependency-groups]
+dev = [
+    "mypy>=1.20.2",
+]
