@@ -29,8 +29,7 @@ def test_observability_engine_rejects_non_sink():
 
 
 def test_otlp_sink_import_path():
-    """OTLPSink lives in mori.adapters.sinks.otlp_sink."""
-    pytest.importorskip("opentelemetry", reason="opentelemetry not installed")
+    """OTLPSink lives in mori.adapters.sinks.otlp_sink and is importable without opentelemetry."""
     from mori.adapters.sinks.otlp_sink import OTLPSink
 
     assert OTLPSink is not None
