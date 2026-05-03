@@ -120,17 +120,49 @@ async def demo_custom_sink() -> None:
     """Pass any object that satisfies the Sink protocol — no string key required.
 
     Useful for routing events to Slack, a database, a custom metrics system, etc.
+
+    No credentials needed — uses a stub RuntimeAdapter so you can see the full
+    event flow without a live model.
     """
+    import datetime
 
-    class SlackSink:
-        """Toy example: post high-severity events to a Slack webhook."""
+    from mori.agent import MoriBuilder
+    from mori.runtime.result import RunResult
+    from mori.types import RunStatus, TokenUsage
 
+    # --- Stub adapter: returns a fixed response, no model call ---
+    class StubAdapter:
+        async def run(
+            self, task: str, state: Any, tools: Any, memory: Any, skills: Any
+        ) -> RunResult:
+            return RunResult(
+                run_id=state.run_id,
+                thread_id=state.thread_id,
+                status=RunStatus.COMPLETED,
+                task=task,
+                final_output=(
+                    "Engineering update (stub):\n"
+                    "- Mori v0.6 shipped — ports-and-adapters at every boundary\n"
+                    "- New adapters: VoyageAI, OpenAI, Cohere, local embeddings, LangGraph, OTLP\n"
+                    "- 469 tests passing"
+                ),
+                total_steps=1,
+                total_usage=TokenUsage(input_tokens=0, output_tokens=0),
+                total_tool_calls=0,
+                total_duration_ms=1.0,
+            )
+
+        async def stream(self, task: str, state: Any, tools: Any, **kwargs: Any):
+            return
+            yield
+
+    # --- Custom Sink: print a timestamped line for every event ---
+    class ConsoleSink:
         realtime = True
 
         async def write(self, event: MoriEvent) -> None:
-            if event.event_type in ("run.error", "permission.denied"):
-                # In real code: await slack_client.post(channel="#alerts", text=...)
-                print(f"[slack] ALERT: {event.event_type} — {event.metadata}")
+            ts = datetime.datetime.now(datetime.UTC).strftime("%H:%M:%S")
+            print(f"  [{ts}] {event.event_type}")
 
         async def write_batch(self, events: list[MoriEvent]) -> None:
             for e in events:
@@ -142,14 +174,14 @@ async def demo_custom_sink() -> None:
         async def close(self) -> None:
             pass
 
-    agent = (
-        Mori.builder()
-        .model("anthropic", model="claude-sonnet-4-20250514")
-        .sink(SlackSink())
-        .sink("stdout")
-        .build()
-    )
+    builder = MoriBuilder()
+    builder._model_adapter = object()  # not reached — StubAdapter handles run()
+    builder._runtime_adapter = StubAdapter()
+    agent = builder.sink(ConsoleSink()).build()
+
+    print("── events ────────────────────────")
     result = await agent.run("Draft a short status update for the engineering team.")
+    print("── output ────────────────────────")
     print(result.final_output)
     await agent.close()
 
@@ -187,28 +219,24 @@ async def demo_otlp_sink() -> None:
 class AuditingAdapter:
     """Example RuntimeAdapter that logs every run to a local audit log.
 
-    Wraps the native Mori loop result with pre/post audit records.
-    In production this could be a LangGraph graph, a CrewAI crew, etc.
+    Wraps an inner adapter and records start/end/error to a file. In production
+    the inner adapter could be a LangGraph graph, a CrewAI crew, a live model, etc.
     """
 
-    def __init__(self, audit_path: str = "/tmp/mori_audit.log") -> None:
+    def __init__(self, inner: Any, audit_path: str = "/tmp/mori_audit.log") -> None:
+        self._inner = inner
         self._audit_path = audit_path
 
     async def run(self, task: str, state: Any, tools: Any, memory: Any, skills: Any) -> Any:
         import time
 
-        from mori.runtime.loop import AgentLoop
-
         started_at = time.time()
         self._log(f"START run_id={state.run_id} task={task!r}")
-
-        inner = AgentLoop(model=state._model if hasattr(state, "_model") else None, tools=tools)
         try:
-            result = await inner._run_from_state(state)
+            result = await self._inner.run(task, state, tools, memory, skills)
         except Exception as exc:
             self._log(f"ERROR run_id={state.run_id} error={exc!r}")
             raise
-
         elapsed = (time.time() - started_at) * 1000
         self._log(
             f"END run_id={state.run_id} status={result.status} "
@@ -218,8 +246,8 @@ class AuditingAdapter:
 
     async def stream(self, task: str, state: Any, tools: Any, **kwargs: Any):
         self._log(f"STREAM run_id={state.run_id} task={task!r}")
-        return
-        yield  # make it an async generator
+        async for chunk in self._inner.stream(task, state, tools, **kwargs):
+            yield chunk
 
     def _log(self, message: str) -> None:
         import datetime
@@ -227,21 +255,47 @@ class AuditingAdapter:
         ts = datetime.datetime.now(datetime.UTC).isoformat()
         with open(self._audit_path, "a") as f:
             f.write(f"{ts}  {message}\n")
+        print(f"  [audit] {message}")
 
 
 async def demo_custom_runtime_adapter() -> None:
-    """Use a custom RuntimeAdapter that wraps every run in an audit log."""
-    from unittest.mock import MagicMock
+    """RuntimeAdapter that wraps every run with audit log entries.
 
+    No credentials needed — the inner adapter is a stub.
+    """
     from mori.agent import MoriBuilder
+    from mori.runtime.result import RunResult
+    from mori.types import RunStatus, TokenUsage
 
+    class StubAdapter:
+        async def run(
+            self, task: str, state: Any, tools: Any, memory: Any, skills: Any
+        ) -> RunResult:
+            return RunResult(
+                run_id=state.run_id,
+                thread_id=state.thread_id,
+                status=RunStatus.COMPLETED,
+                task=task,
+                final_output=f"stub response to: {task}",
+                total_steps=2,
+                total_usage=TokenUsage(input_tokens=120, output_tokens=48),
+                total_tool_calls=0,
+                total_duration_ms=42.0,
+            )
+
+        async def stream(self, task: str, state: Any, tools: Any, **kwargs: Any):
+            return
+            yield
+
+    audit_path = "/tmp/mori_audit.log"
     builder = MoriBuilder()
-    builder._model_adapter = MagicMock()
-    builder._runtime_adapter = AuditingAdapter(audit_path="/tmp/mori_audit.log")
-
+    builder._model_adapter = object()  # not reached — AuditingAdapter handles run()
+    builder._runtime_adapter = AuditingAdapter(StubAdapter(), audit_path=audit_path)
     agent = builder.build()
+
     result = await agent.run("Draft the weekly engineering update.")
-    print(result.final_output)
+    print(f"\noutput: {result.final_output}")
+    print(f"audit written to: {audit_path}")
     await agent.close()
 
 

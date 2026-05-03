@@ -1522,6 +1522,11 @@ voyageai = [
     { name = "voyageai" },
 ]
 
+[package.dev-dependencies]
+dev = [
+    { name = "mypy" },
+]
+
 [package.metadata]
 requires-dist = [
     { name = "anthropic", marker = "extra == 'anthropic'", specifier = ">=0.40,<1.0" },
@@ -1552,6 +1557,9 @@ requires-dist = [
     { name = "voyageai", marker = "extra == 'voyageai'", specifier = ">=0.2" },
 ]
 provides-extras = ["anthropic", "openai", "postgres", "langgraph", "voyageai", "cohere", "local-embed", "otlp", "docs", "dev"]
+
+[package.metadata.requires-dev]
+dev = [{ name = "mypy", specifier = ">=1.20.2" }]
 
 [[package]]
 name = "mpmath"
