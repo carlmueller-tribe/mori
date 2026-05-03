@@ -4,7 +4,6 @@ from __future__ import annotations
 
 import secrets
 from datetime import UTC, datetime
-from typing import Any
 
 from mori.observability.events import (
     MoriEvent,
@@ -14,13 +13,20 @@ from mori.observability.events import (
     SpanContext,
     ToolResultEvent,
 )
+from mori.observability.sinks.base import Sink
 from mori.types import RunId, RunStatus, TraceId
 
 
 class ObservabilityEngine:
     """Buffered event dispatch to pluggable sinks."""
 
-    def __init__(self, sinks: list[Any], config: ObservabilityConfig | None = None) -> None:
+    def __init__(self, sinks: list[Sink], config: ObservabilityConfig | None = None) -> None:
+        for sink in sinks:
+            if not isinstance(sink, Sink):
+                raise TypeError(
+                    f"{type(sink).__name__} does not satisfy Sink protocol. "
+                    "Implement write(), write_batch(), flush(), close(), and realtime."
+                )
         self._sinks = sinks
         self._config = config or ObservabilityConfig()
         self._buffer: list[MoriEvent] = []
@@ -37,7 +43,7 @@ class ObservabilityEngine:
 
         # Write-through for realtime sinks (e.g. StdoutSink)
         for sink in self._sinks:
-            if getattr(sink, "realtime", False) is True:
+            if sink.realtime is True:
                 await sink.write(event)
 
         # Buffer for non-realtime sinks (e.g. JsonlSink)
@@ -125,5 +131,5 @@ class ObservabilityEngine:
         events = list(self._buffer)
         self._buffer.clear()
         for sink in self._sinks:
-            if getattr(sink, "realtime", False) is not True:
+            if sink.realtime is not True:
                 await sink.write_batch(events)

@@ -8,6 +8,8 @@ from mori.observability.events import MoriEvent
 
 
 class JsonlSink:
+    realtime = False  # Events are buffered and flushed
+
     def __init__(self, path: str) -> None:
         self._path = path
         self._file: io.TextIOWrapper = open(path, "a", encoding="utf-8")  # noqa: SIM115
