@@ -34,6 +34,8 @@ class MoriBuilder:
         self._policy_file: str | None = None
         self._checkpointer_config: dict[str, Any] | None = None
         self._hook_handlers: list[tuple[str, Any, int]] = []
+        self._embedder: Any | None = None
+        self._runtime_adapter: Any | None = None
 
     def model(
         self,
@@ -106,16 +108,37 @@ class MoriBuilder:
         self._mcp_servers.append({"name": name, "url": url, "transport": transport, "auth": auth})
         return self
 
-    def sink(self, sink_type: str, **kwargs: Any) -> MoriBuilder:
-        if sink_type == "stdout":
-            self._sinks.append(StdoutSink())
-        elif sink_type == "jsonl":
-            path = kwargs.get("path")
-            if not path:
-                raise ValueError("JsonlSink requires a 'path' argument")
-            self._sinks.append(JsonlSink(path=path))
+    def sink(self, sink: Any, **kwargs: Any) -> MoriBuilder:
+        from mori.observability.sinks.base import Sink
+
+        if isinstance(sink, str):
+            if sink == "stdout":
+                self._sinks.append(StdoutSink())
+            elif sink == "jsonl":
+                path = kwargs.get("path")
+                if not path:
+                    raise ValueError("JsonlSink requires a 'path' argument")
+                self._sinks.append(JsonlSink(path=path))
+            else:
+                raise ValueError(
+                    f"Unknown sink type: {sink!r}. "
+                    "Supported: stdout, jsonl, or pass a Sink instance."
+                )
+        elif isinstance(sink, Sink):
+            self._sinks.append(sink)
         else:
-            raise ValueError(f"Unknown sink type: {sink_type}. Supported: stdout, jsonl")
+            raise TypeError(
+                f"{type(sink).__name__} does not satisfy Sink protocol. "
+                "Implement write(), write_batch(), flush(), close(), and realtime."
+            )
+        return self
+
+    def embedder(self, embedder: Any) -> MoriBuilder:
+        self._embedder = embedder
+        return self
+
+    def runtime(self, adapter: Any) -> MoriBuilder:
+        self._runtime_adapter = adapter
         return self
 
     def memory_backend(self, backend_type: str, **kwargs: Any) -> MoriBuilder:
@@ -215,13 +238,7 @@ class MoriBuilder:
                 backend = sqlite_backend
             else:
                 raise ValueError(f"Unknown memory backend: {backend_type}")
-            embedder = None
-            try:
-                from mori.memory.embedder import AnthropicEmbedder
-
-                embedder = AnthropicEmbedder()
-            except ImportError:
-                pass
+            embedder = self._embedder
             memory_module = MemoryModule(
                 backend=backend, config=MemoryConfig(), embedder=embedder, model=self._model_adapter
             )
@@ -292,6 +309,7 @@ class MoriBuilder:
             permission=permission_engine,
             identity=self._identity,
             hooks=hook_registry,
+            runtime=self._runtime_adapter,
         )
 
         return Mori(
