@@ -26,6 +26,10 @@ anthropic = ["anthropic>=0.40,<1.0"]
 openai = ["openai>=1.50,<2.0"]
 postgres = ["asyncpg>=0.29", "pgvector>=0.3"]
 langgraph = ["langgraph>=0.2"]
+voyageai = ["voyageai>=0.2"]
+cohere = ["cohere>=5.0"]
+local-embed = ["sentence-transformers>=3.0"]
+otlp = ["opentelemetry-sdk>=1.20", "opentelemetry-exporter-otlp-proto-grpc>=1.20"]
 docs = [
     "mkdocs>=1.6",
     "mkdocs-material>=9.5",
@@ -84,3 +88,8 @@ warn_unused_ignores = false
 init_forbid_extra = true
 init_typed = true
 warn_required_dynamic_aliases = true
+
+[dependency-groups]
+dev = [
+    "mypy>=1.20.2",
+]

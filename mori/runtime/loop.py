@@ -407,7 +407,32 @@ class AgentLoop:
     ) -> RunResult:  # noqa: E501
         state = self._init_state(task, thread_id, context)
         if self._runtime is not None:
-            return await self._runtime.run(task, state, self._tools, self._memory, self._skills)
+            from mori.observability.events import RunEndEvent, RunStartEvent
+
+            start_time = time.monotonic()
+            await self._emit(
+                RunStartEvent(
+                    event_id=f"evt_{_uid()}",
+                    timestamp=datetime.now(UTC),
+                    run_id=state.run_id,
+                    task=state.task,
+                    config={"max_steps": self._control._config.max_steps},
+                )
+            )
+            result = await self._runtime.run(task, state, self._tools, self._memory, self._skills)
+            await self._emit(
+                RunEndEvent(
+                    event_id=f"evt_{_uid()}",
+                    timestamp=datetime.now(UTC),
+                    run_id=state.run_id,
+                    status=result.status,
+                    total_steps=result.total_steps,
+                    total_input_tokens=result.total_usage.input_tokens,
+                    total_output_tokens=result.total_usage.output_tokens,
+                    duration_ms=(time.monotonic() - start_time) * 1000,
+                )
+            )
+            return result
         return await self._run_from_state(state)
 
     async def resume(self, thread_id: ThreadId, input: dict[str, Any]) -> RunResult:
