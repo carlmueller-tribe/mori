@@ -27,14 +27,26 @@ def _make_event(event_type: str = "test", **overrides) -> MoriEvent:
     return MoriEvent(**defaults)
 
 
+class SpySink:
+    """Concrete Sink implementation that wraps AsyncMock methods for assertion support.
+
+    Declared as a proper class so isinstance(sink, Sink) passes under Python 3.14's
+    stricter runtime_checkable checks (bare AsyncMock() no longer satisfies protocols
+    with annotated non-callable members).
+    """
+
+    realtime: bool = False
+
+    def __init__(self) -> None:
+        self.write = AsyncMock()
+        self.write_batch = AsyncMock()
+        self.flush = AsyncMock()
+        self.close = AsyncMock()
+
+
 @pytest.fixture
-def mock_sink():
-    sink = AsyncMock()
-    sink.write = AsyncMock()
-    sink.write_batch = AsyncMock()
-    sink.flush = AsyncMock()
-    sink.close = AsyncMock()
-    return sink
+def mock_sink() -> SpySink:
+    return SpySink()
 
 
 async def test_emit_dispatches_to_sink(mock_sink):
@@ -82,8 +94,8 @@ async def test_close_flushes_remaining(mock_sink):
 
 
 async def test_multiple_sinks():
-    sink1 = AsyncMock()
-    sink2 = AsyncMock()
+    sink1 = SpySink()
+    sink2 = SpySink()
     engine = ObservabilityEngine(sinks=[sink1, sink2], config=ObservabilityConfig(buffer_size=1))
     await engine.emit(_make_event())
     await engine.flush()
