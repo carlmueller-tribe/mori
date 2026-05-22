@@ -9,7 +9,7 @@ from typing import TYPE_CHECKING, Any, cast
 
 from mori.budget.types import BudgetSlot
 from mori.hooks.events import HookEvents, TurnEndReason
-from mori.hooks.exceptions import HookBlock, HookRetry
+from mori.hooks.exceptions import HookBlock, HookRetry, YieldToUser
 from mori.hooks.payloads import TurnEndPayload, TurnStartPayload
 from mori.model.base import ModelAdapter
 from mori.runtime.result import RunResult
@@ -374,7 +374,16 @@ class AgentLoop:
                 )
             )
 
-            result = await self._tools.invoke(call.name, call.arguments)
+            try:
+                result = await self._tools.invoke(call.name, call.arguments)
+            except YieldToUser as y:
+                state.status = RunStatus.PAUSED
+                state.paused_reason = "await_user_input"
+                state.paused_prompt = y.question
+                state.paused_tool_call = call
+                if self._checkpointer:
+                    await self._checkpointer.save(state)
+                return  # exits _phase_act; _run_from_state sees PAUSED and exits
 
             # After hook (observe ToolResult)
             if self._hooks:
@@ -626,7 +635,7 @@ class AgentLoop:
                         HookEvents.TURN_END,
                         TurnEndPayload(
                             state=state,
-                            reason=self._map_status_to_turn_end_reason(state.status),
+                            reason=self._map_status_to_turn_end_reason(state),
                         ),
                     )
                 except HookRetry as retry:
@@ -723,16 +732,24 @@ class AgentLoop:
             HookEvents.TURN_END,
             TurnEndPayload(
                 state=state,
-                reason=self._map_status_to_turn_end_reason(state.status),
+                reason=self._map_status_to_turn_end_reason(state),
             ),
         )
 
     @staticmethod
-    def _map_status_to_turn_end_reason(status: RunStatus) -> TurnEndReason:
+    def _map_status_to_turn_end_reason(state_or_status: RunStatus | MoriState) -> TurnEndReason:
+        if isinstance(state_or_status, RunStatus):
+            status = state_or_status
+            paused_reason = None
+        else:
+            status = state_or_status.status
+            paused_reason = state_or_status.paused_reason
         if status == RunStatus.COMPLETED:
             return TurnEndReason.COMPLETED
         if status == RunStatus.PAUSED:
-            return TurnEndReason.PAUSED_ESCALATE  # ask_user case overridden in Task 13
+            if paused_reason == "await_user_input":
+                return TurnEndReason.PAUSED_AWAIT_USER
+            return TurnEndReason.PAUSED_ESCALATE
         if status == RunStatus.FAILED:
             return TurnEndReason.ERRORED
         if status == RunStatus.BLOCKED:

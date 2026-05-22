@@ -60,3 +60,49 @@ async def test_tool_registry_re_raises_hook_retry() -> None:
     registry.register("retrier", retrier, description="x")
     with pytest.raises(HookRetry):
         await registry.invoke("retrier", {})
+
+
+@pytest.mark.asyncio
+async def test_loop_pauses_on_ask_user_yield() -> None:
+    """When the model calls ask_user, the loop pauses with
+    paused_reason='await_user_input' and paused_prompt set."""
+    from unittest.mock import AsyncMock
+
+    from mori.control.checkpoint import InMemoryCheckpoints
+    from mori.model.base import ModelAdapter
+    from mori.runtime.loop import AgentLoop
+    from mori.tools.registry import ToolRegistry
+    from mori.types import (
+        Message,
+        ModelResponse,
+        RunStatus,
+        TokenUsage,
+        ToolCall,
+    )
+
+    mock_model = AsyncMock(spec=ModelAdapter)
+    mock_model.model_id = "test"
+    mock_model.supports_tool_use = True
+    mock_model.max_context_tokens = 100000
+    # The model asks ask_user on first call. No second call (we pause).
+    mock_model.invoke = AsyncMock(return_value=ModelResponse(
+        message=Message(
+            role="assistant",
+            content="",
+            tool_calls=[ToolCall(id="c1", name="ask_user", arguments={"question": "which db?"})],
+        ),
+        usage=TokenUsage(input_tokens=10, output_tokens=5),
+        stop_reason="tool_use",
+    ))
+
+    tools = ToolRegistry()
+    tools.register("ask_user", ask_user, description="ask the user")
+
+    checkpointer = InMemoryCheckpoints()
+
+    loop = AgentLoop(model=mock_model, tools=tools, checkpointer=checkpointer)
+    result = await loop.run("migrate the user table")
+
+    assert result.status == RunStatus.PAUSED
+    assert result.paused_prompt == "which db?"
+    assert result.checkpoint_id is not None
