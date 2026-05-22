@@ -250,3 +250,45 @@ async def test_turn_end_retry_bounded_by_max_retry_limit(mock_model) -> None:
 
     # On exhaustion, status is FAILED (NOT BLOCKED)
     assert result.status == RunStatus.FAILED
+
+
+@pytest.mark.asyncio
+async def test_e2e_chat_loop() -> None:
+    """Full chat-loop integration: agent calls ask_user, yields, caller
+    resumes with a response, agent completes."""
+    from mori.control.checkpoint import InMemoryCheckpoints
+    from mori.tools.native.ask_user import ask_user
+    from mori.types import ToolCall
+
+    ask_response = ModelResponse(
+        message=Message(
+            role="assistant",
+            content="",
+            tool_calls=[ToolCall(id="c1", name="ask_user", arguments={"question": "which db?"})],
+        ),
+        usage=TokenUsage(input_tokens=10, output_tokens=5),
+        stop_reason="tool_use",
+    )
+    done_response = _text("done")
+
+    mock = AsyncMock(spec=ModelAdapter)
+    mock.model_id = "test"
+    mock.supports_tool_use = True
+    mock.max_context_tokens = 100000
+    mock.invoke = AsyncMock(side_effect=[ask_response, done_response])
+
+    tools = ToolRegistry()
+    tools.register("ask_user", ask_user, description="ask the user")
+    checkpointer = InMemoryCheckpoints()
+    loop = AgentLoop(model=mock, tools=tools, checkpointer=checkpointer)
+
+    paused = await loop.run("migrate the user table")
+    assert paused.status == RunStatus.PAUSED
+    assert paused.paused_prompt == "which db?"
+
+    final = await loop.resume(paused.thread_id, "production_db")
+    assert final.status == RunStatus.COMPLETED
+    assert any(
+        m.role == "tool" and m.content == "production_db"
+        for m in final.messages
+    )

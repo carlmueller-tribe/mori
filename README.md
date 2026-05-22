@@ -66,6 +66,30 @@ agent = (
 result = await agent.run("Fix the failing test in tests/test_auth.py")
 ```
 
+### Chat Mode
+
+The agent can pause mid-run to ask the user a question and resume after the
+user responds. A checkpointer is required so state is preserved across the
+pause.
+
+```python
+# Chat mode: agent can pause to ask the user a question
+from mori import Mori
+from mori.types import RunStatus
+
+agent = (
+    Mori.builder()
+    .model("anthropic", model="claude-sonnet-4-20250514")
+    .checkpointer("memory")
+    .build()
+)
+
+result = await agent.run("Apply the user_email migration if it's safe")
+while result.status == RunStatus.PAUSED and result.paused_prompt:
+    answer = input(f"{result.paused_prompt}\n> ")
+    result = await agent.resume(result.thread_id, answer)
+```
+
 ## Design Principles
 
 - **Own the runtime.** No external orchestration dependency. Simple, debuggable, fast.
