@@ -38,3 +38,57 @@ async def test_hook_retry_not_swallowed_when_fail_open_true() -> None:
 def test_hook_config_has_max_retry_limit_default() -> None:
     config = HookConfig()
     assert config.max_retry_limit == 3
+
+
+@pytest.mark.asyncio
+async def test_hook_retry_on_after_event_warns_and_swallows(caplog) -> None:
+    """HookRetry on an after-event (observe-only) is logged and ignored, not propagated."""
+    import logging
+
+    reg = HookRegistry()
+
+    async def bad(payload: object) -> None:
+        raise HookRetry("wrong place", hook_id="bad")
+
+    reg.register("e", bad)
+    with caplog.at_level(logging.WARNING):
+        # Must NOT raise
+        await reg.dispatch_after("e", {})
+
+
+@pytest.mark.asyncio
+async def test_hook_block_on_after_event_warns_and_swallows(caplog) -> None:
+    """HookBlock on an after-event (observe-only) is also logged and ignored."""
+    import logging
+
+    from mori.hooks.exceptions import HookBlock
+
+    reg = HookRegistry()
+
+    async def bad(payload: object) -> None:
+        raise HookBlock("wrong place", hook_id="bad")
+
+    reg.register("e", bad)
+    with caplog.at_level(logging.WARNING):
+        await reg.dispatch_after("e", {})
+
+
+@pytest.mark.asyncio
+async def test_dispatch_after_processes_remaining_handlers_after_invalid_signal() -> None:
+    """If one after-handler raises HookRetry, the next handler still fires."""
+    from mori.hooks.exceptions import HookBlock
+
+    reg = HookRegistry()
+    other_ran = False
+
+    async def bad(payload: object) -> None:
+        raise HookBlock("wrong place")
+
+    async def other(payload: object) -> None:
+        nonlocal other_ran
+        other_ran = True
+
+    reg.register("e", bad, priority=50)
+    reg.register("e", other, priority=100)
+    await reg.dispatch_after("e", {})
+    assert other_ran is True

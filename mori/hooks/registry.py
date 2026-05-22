@@ -108,8 +108,20 @@ class HookRegistry:
         return current
 
     async def dispatch_after(self, event_name: str, payload: Any) -> None:
-        for _priority, _hook_id, handler in self._hooks.get(event_name, []):
-            await self._call(handler, payload)
+        for _priority, hook_id, handler in self._hooks.get(event_name, []):
+            try:
+                await self._call(handler, payload)
+            except (HookBlock, HookRetry) as exc:
+                # Block/retry on after-event is a hook author error — log + swallow.
+                # Other handlers continue to process.
+                if self._config.log_hook_errors:
+                    log.warning(
+                        "hook.invalid_signal_on_after",
+                        handler=getattr(handler, "__name__", "?"),
+                        hook_id=hook_id,
+                        event_name=event_name,
+                        signal=type(exc).__name__,
+                    )
 
     def list_hooks(self, event_name: str | None = None) -> list[HookRegistration]:
         if event_name is not None:
