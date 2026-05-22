@@ -9,6 +9,7 @@ from typing import TYPE_CHECKING, Any, cast
 
 from mori.budget.types import BudgetSlot
 from mori.hooks.events import HookEvents, TurnEndReason
+from mori.hooks.exceptions import HookBlock
 from mori.hooks.payloads import TurnEndPayload, TurnStartPayload
 from mori.model.base import ModelAdapter
 from mori.runtime.result import RunResult
@@ -436,10 +437,20 @@ class AgentLoop:
             )
             return result
         if self._hooks:
-            await self._hooks.dispatch_before(
-                HookEvents.TURN_START,
-                TurnStartPayload(input=task, thread_id=state.thread_id, is_resume=False),
-            )
+            try:
+                await self._hooks.dispatch_before(
+                    HookEvents.TURN_START,
+                    TurnStartPayload(input=task, thread_id=state.thread_id, is_resume=False),
+                )
+            except HookBlock as block:
+                state.status = RunStatus.BLOCKED
+                await self._fire_turn_end(state)
+                result = RunResult.from_state(state, duration_ms=0.0)
+                result = result.model_copy(update={
+                    "block_reason": block.reason,
+                    "block_hook_id": block.hook_id,
+                })
+                return result
         return await self._run_from_state(state)
 
     async def resume(self, thread_id: ThreadId, input: dict[str, Any]) -> RunResult:
@@ -461,10 +472,20 @@ class AgentLoop:
         state.paused_tool_call = None
         if self._hooks:
             user_text = input if isinstance(input, str) else input.get("response", "")
-            await self._hooks.dispatch_before(
-                HookEvents.TURN_START,
-                TurnStartPayload(input=user_text, thread_id=thread_id, is_resume=True),
-            )
+            try:
+                await self._hooks.dispatch_before(
+                    HookEvents.TURN_START,
+                    TurnStartPayload(input=user_text, thread_id=thread_id, is_resume=True),
+                )
+            except HookBlock as block:
+                state.status = RunStatus.BLOCKED
+                await self._fire_turn_end(state)
+                result = RunResult.from_state(state, duration_ms=0.0)
+                result = result.model_copy(update={
+                    "block_reason": block.reason,
+                    "block_hook_id": block.hook_id,
+                })
+                return result
         return await self._run_from_state(state)
 
     async def _run_from_state(self, state: MoriState) -> RunResult:
@@ -639,6 +660,17 @@ class AgentLoop:
             await self._obs.flush()
 
         return RunResult.from_state(state, duration_ms=elapsed_ms, checkpoint_id=checkpoint_id)
+
+    async def _fire_turn_end(self, state: MoriState) -> None:
+        if not self._hooks:
+            return
+        await self._hooks.dispatch_before(
+            HookEvents.TURN_END,
+            TurnEndPayload(
+                state=state,
+                reason=self._map_status_to_turn_end_reason(state.status),
+            ),
+        )
 
     @staticmethod
     def _map_status_to_turn_end_reason(status: RunStatus) -> TurnEndReason:
