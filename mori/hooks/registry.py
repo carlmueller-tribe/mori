@@ -11,6 +11,7 @@ from typing import Any
 
 import structlog
 
+from mori.hooks.exceptions import HookBlock, HookRetry
 from mori.hooks.types import HookConfig, HookHandler, HookRegistration
 
 log = structlog.get_logger()
@@ -73,6 +74,9 @@ class HookRegistry:
                 loop = asyncio.get_running_loop()
                 awaitable = loop.run_in_executor(None, handler, payload)
             return await asyncio.wait_for(awaitable, timeout=self._config.hook_timeout_sec)
+        except (HookBlock, HookRetry):
+            # Policy signals are NEVER swallowed, regardless of fail_open.
+            raise
         except TimeoutError:
             if self._config.log_hook_errors:
                 log.warning("hook.timeout", handler=getattr(handler, "__name__", "?"))
@@ -88,8 +92,17 @@ class HookRegistry:
 
     async def dispatch_before(self, event_name: str, payload: Any) -> Any:
         current = payload
-        for _priority, _hook_id, handler in self._hooks.get(event_name, []):
-            result = await self._call(handler, current)
+        for _priority, hook_id, handler in self._hooks.get(event_name, []):
+            try:
+                result = await self._call(handler, current)
+            except HookBlock as e:
+                if e.hook_id is None:
+                    e.hook_id = hook_id
+                raise
+            except HookRetry as e:
+                if e.hook_id is None:
+                    e.hook_id = hook_id
+                raise
             if result is not None:
                 current = result
         return current
