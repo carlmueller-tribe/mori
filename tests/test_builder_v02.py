@@ -21,6 +21,7 @@ def test_builder_cli():
             Mori.builder()
             .model("anthropic", api_key="test")
             .cli("search", command="rg", description="Search", args_format="flags")
+            .disable_native_tool("ask_user")
             .build()
         )
         specs = agent.tools.list_specs()
@@ -37,6 +38,7 @@ def test_builder_multiple_cli():
             .model("anthropic", api_key="test")
             .cli("rg", command="rg", description="Ripgrep", args_format="flags")
             .cli("git", command="git", description="Git", args_format="subcommand")
+            .disable_native_tool("ask_user")
             .build()
         )
         assert len(agent.tools.list_specs()) == 2
