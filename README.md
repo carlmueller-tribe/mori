@@ -80,7 +80,7 @@ from mori.types import RunStatus
 agent = (
     Mori.builder()
     .model("anthropic", model="claude-sonnet-4-20250514")
-    .checkpointer("memory")
+    .checkpointer("inmemory")
     .build()
 )
 

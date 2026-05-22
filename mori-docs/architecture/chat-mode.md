@@ -37,5 +37,5 @@ prompt or skill design issues, not a runtime issue.
 
 ## Requirements
 
-- A checkpointer must be configured (`.checkpointer("memory")` or `.checkpointer("sqlite", path=...)`); resume requires it.
+- A checkpointer must be configured (`.checkpointer("inmemory")` or `.checkpointer("sqlite", path=...)`); resume requires it.
 - The agent must have `ask_user` registered — true by default; opt out with `.disable_native_tool("ask_user")`.

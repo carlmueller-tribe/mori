@@ -92,4 +92,5 @@ warn_required_dynamic_aliases = true
 [dependency-groups]
 dev = [
     "mypy>=1.20.2",
+    "python-dotenv>=1.2.2",
 ]
