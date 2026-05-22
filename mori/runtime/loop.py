@@ -688,7 +688,9 @@ class AgentLoop:
         if self._obs:
             await self._obs.flush()
 
-        run_result = RunResult.from_state(state, duration_ms=elapsed_ms, checkpoint_id=checkpoint_id)
+        run_result = RunResult.from_state(
+            state, duration_ms=elapsed_ms, checkpoint_id=checkpoint_id
+        )
         if "block_reason" in state.context:
             run_result = run_result.model_copy(update={
                 "block_reason": state.context["block_reason"],
