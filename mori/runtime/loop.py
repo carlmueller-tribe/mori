@@ -491,7 +491,7 @@ class AgentLoop:
                 return result
         return await self._run_from_state(state)
 
-    async def resume(self, thread_id: ThreadId, input: dict[str, Any]) -> RunResult:
+    async def resume(self, thread_id: ThreadId, input: dict[str, Any] | str) -> RunResult:
         if not self._checkpointer:
             raise ValueError("Cannot resume: no checkpointer configured")
         cp = await self._checkpointer.load_latest(thread_id)
@@ -502,14 +502,28 @@ class AgentLoop:
             raise ValueError(
                 f"Cannot resume thread {thread_id}: checkpoint has status '{state.status.value}', expected 'paused'"  # noqa: E501
             )
-        approved = input.get("approved", False)
-        msg = f"[Resume] {'Approved' if approved else 'Rejected'}. Details: {input}"
-        state.messages.append(Message(role="user", content=msg))
+
+        user_text: str = input if isinstance(input, str) else input.get("response", "")
+
+        if state.paused_reason == "await_user_input" and state.paused_tool_call is not None:
+            # ask_user pause — inject user response as the paused tool call's result
+            state.messages.append(Message(
+                role="tool",
+                content=user_text,
+                tool_call_id=state.paused_tool_call.id,
+            ))
+        else:
+            # Legacy ESCALATE path — preserve existing approval-style behavior
+            approved = input.get("approved", False) if isinstance(input, dict) else False
+            msg = f"[Resume] {'Approved' if approved else 'Rejected'}. Details: {input}"
+            state.messages.append(Message(role="user", content=msg))
+
         state.status = RunStatus.RUNNING
         state.paused_reason = None
         state.paused_tool_call = None
+        state.paused_prompt = None
+
         if self._hooks:
-            user_text = input if isinstance(input, str) else input.get("response", "")
             try:
                 await self._hooks.dispatch_before(
                     HookEvents.TURN_START,
