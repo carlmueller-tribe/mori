@@ -8,6 +8,8 @@ from datetime import UTC, datetime
 from typing import TYPE_CHECKING, Any, cast
 
 from mori.budget.types import BudgetSlot
+from mori.hooks.events import HookEvents, TurnEndReason
+from mori.hooks.payloads import TurnEndPayload, TurnStartPayload
 from mori.model.base import ModelAdapter
 from mori.runtime.result import RunResult
 from mori.runtime.state import MoriState
@@ -433,6 +435,11 @@ class AgentLoop:
                 )
             )
             return result
+        if self._hooks:
+            await self._hooks.dispatch_before(
+                HookEvents.TURN_START,
+                TurnStartPayload(input=task, thread_id=state.thread_id, is_resume=False),
+            )
         return await self._run_from_state(state)
 
     async def resume(self, thread_id: ThreadId, input: dict[str, Any]) -> RunResult:
@@ -452,6 +459,12 @@ class AgentLoop:
         state.status = RunStatus.RUNNING
         state.paused_reason = None
         state.paused_tool_call = None
+        if self._hooks:
+            user_text = input if isinstance(input, str) else input.get("response", "")
+            await self._hooks.dispatch_before(
+                HookEvents.TURN_START,
+                TurnStartPayload(input=user_text, thread_id=thread_id, is_resume=True),
+            )
         return await self._run_from_state(state)
 
     async def _run_from_state(self, state: MoriState) -> RunResult:
@@ -572,6 +585,14 @@ class AgentLoop:
             )
         )
         if self._hooks:
+            await self._hooks.dispatch_before(
+                HookEvents.TURN_END,
+                TurnEndPayload(
+                    state=state,
+                    reason=self._map_status_to_turn_end_reason(state.status),
+                ),
+            )
+        if self._hooks:
             await self._hooks.dispatch_after(
                 "run.end", {"status": state.status, "run_id": state.run_id}
             )  # noqa: E501
@@ -618,3 +639,15 @@ class AgentLoop:
             await self._obs.flush()
 
         return RunResult.from_state(state, duration_ms=elapsed_ms, checkpoint_id=checkpoint_id)
+
+    @staticmethod
+    def _map_status_to_turn_end_reason(status: RunStatus) -> TurnEndReason:
+        if status == RunStatus.COMPLETED:
+            return TurnEndReason.COMPLETED
+        if status == RunStatus.PAUSED:
+            return TurnEndReason.PAUSED_ESCALATE  # ask_user case overridden in Task 13
+        if status == RunStatus.FAILED:
+            return TurnEndReason.ERRORED
+        if status == RunStatus.BLOCKED:
+            return TurnEndReason.BLOCKED
+        return TurnEndReason.EXHAUSTED
