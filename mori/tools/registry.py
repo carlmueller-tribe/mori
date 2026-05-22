@@ -226,6 +226,12 @@ class ToolRegistry:
         except ToolInvocationError:
             raise
         except Exception as exc:
+            # Control-flow exceptions from hooks and the ask_user tool must propagate.
+            # They are policy signals, not tool failures.
+            from mori.hooks.exceptions import HookBlock, HookRetry, YieldToUser
+
+            if isinstance(exc, (HookBlock, HookRetry, YieldToUser)):
+                raise
             elapsed_ms = (time.monotonic() - start) * 1000
             result = ToolResult(
                 tool_name=name,
