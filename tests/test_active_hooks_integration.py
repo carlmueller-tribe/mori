@@ -86,3 +86,61 @@ async def test_turn_start_block_fires_turn_end_with_blocked_reason(mock_model) -
     await loop.run("anything")
     assert len(end_payloads) == 1
     assert end_payloads[0].reason == TurnEndReason.BLOCKED
+
+
+@pytest.mark.asyncio
+async def test_tool_invoke_block_appends_synthetic_message(mock_model) -> None:
+    """When a tool.invoke.before hook blocks, the tool call gets a synthetic
+    blocked result message and the loop continues (no actual tool invocation)."""
+    from mori.types import ToolCall
+
+    # First model response: assistant requests apply_migration with env=prod
+    first_response = ModelResponse(
+        message=Message(
+            role="assistant",
+            content="",
+            tool_calls=[ToolCall(id="c1", name="apply_migration", arguments={"env": "prod"})],
+        ),
+        usage=TokenUsage(input_tokens=10, output_tokens=5),
+        stop_reason="tool_use",
+    )
+    # Second response: assistant declares done (no tool calls → loop exits)
+    second_response = _text("done")
+    mock_model.invoke = AsyncMock(side_effect=[first_response, second_response])
+
+    registry = ToolRegistry()
+    invoked = []
+
+    def apply_migration(env: str) -> str:
+        invoked.append(env)
+        return "applied"
+
+    registry.register("apply_migration", apply_migration, description="apply a migration")
+
+    hooks = HookRegistry()
+
+    async def block_prod(call: Any) -> None:
+        if call.arguments.get("env") == "prod":
+            raise HookBlock("no prod tools", hook_id="prod_gate")
+        return None
+
+    hooks.register(HookEvents.TOOL_INVOKE_BEFORE, block_prod)
+
+    loop = AgentLoop(model=mock_model, tools=registry, hooks=hooks)
+    result = await loop.run("do the thing")
+
+    # The tool was NOT actually invoked
+    assert invoked == []
+
+    # A synthetic blocked message appears in the conversation
+    blocked_msgs = [
+        m for m in result.messages
+        if m.role == "tool" and isinstance(m.content, str) and "BLOCKED" in m.content
+    ]
+    assert len(blocked_msgs) == 1
+    assert "no prod tools" in blocked_msgs[0].content
+    assert "prod_gate" in blocked_msgs[0].content
+    assert blocked_msgs[0].tool_call_id == "c1"
+
+    # Status is NOT BLOCKED — the run continued
+    assert result.status != RunStatus.BLOCKED

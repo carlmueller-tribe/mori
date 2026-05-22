@@ -332,7 +332,17 @@ class AgentLoop:
 
             # Before hook fires first so ToolInvokeEvent records actual arguments
             if self._hooks:
-                call = await self._hooks.dispatch_before("tool.invoke.before", call)
+                try:
+                    call = await self._hooks.dispatch_before("tool.invoke.before", call)
+                except HookBlock as block:
+                    blocked_msg = Message(
+                        role="tool",
+                        content=f"BLOCKED by {block.hook_id}: {block.reason}",
+                        tool_call_id=call.id,
+                    )
+                    state.messages.append(blocked_msg)
+                    state.total_tool_calls += 1
+                    continue  # skip this tool, process next call in the loop
 
             await self._emit(
                 ToolInvokeEvent(
