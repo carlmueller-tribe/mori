@@ -85,15 +85,19 @@ async def test_loop_pauses_on_ask_user_yield() -> None:
     mock_model.supports_tool_use = True
     mock_model.max_context_tokens = 100000
     # The model asks ask_user on first call. No second call (we pause).
-    mock_model.invoke = AsyncMock(return_value=ModelResponse(
-        message=Message(
-            role="assistant",
-            content="",
-            tool_calls=[ToolCall(id="c1", name="ask_user", arguments={"question": "which db?"})],
-        ),
-        usage=TokenUsage(input_tokens=10, output_tokens=5),
-        stop_reason="tool_use",
-    ))
+    mock_model.invoke = AsyncMock(
+        return_value=ModelResponse(
+            message=Message(
+                role="assistant",
+                content="",
+                tool_calls=[
+                    ToolCall(id="c1", name="ask_user", arguments={"question": "which db?"})
+                ],
+            ),
+            usage=TokenUsage(input_tokens=10, output_tokens=5),
+            stop_reason="tool_use",
+        )
+    )
 
     tools = ToolRegistry()
     tools.register("ask_user", ask_user, description="ask the user")
@@ -159,8 +163,7 @@ async def test_resume_after_ask_user_injects_input_as_tool_result() -> None:
     resumed = await loop.resume(paused.thread_id, "production_db")
     # The resumed conversation contains the user's text as a tool message with the paused call's id
     user_tool_msgs = [
-        m for m in resumed.messages
-        if m.role == "tool" and m.content == "production_db"
+        m for m in resumed.messages if m.role == "tool" and m.content == "production_db"
     ]
     assert len(user_tool_msgs) == 1
     # The agent should have completed (the second model response was no-tool-call)
@@ -212,8 +215,5 @@ async def test_resume_dict_input_with_response_key() -> None:
     assert paused.status == RunStatus.PAUSED
 
     resumed = await loop.resume(paused.thread_id, {"response": "yes"})
-    user_tool_msgs = [
-        m for m in resumed.messages
-        if m.role == "tool" and m.content == "yes"
-    ]
+    user_tool_msgs = [m for m in resumed.messages if m.role == "tool" and m.content == "yes"]
     assert len(user_tool_msgs) == 1

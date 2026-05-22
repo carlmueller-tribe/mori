@@ -230,7 +230,7 @@ class ToolRegistry:
             # They are policy signals, not tool failures.
             from mori.hooks.exceptions import HookBlock, HookRetry, YieldToUser
 
-            if isinstance(exc, (HookBlock, HookRetry, YieldToUser)):
+            if isinstance(exc, HookBlock | HookRetry | YieldToUser):
                 raise
             elapsed_ms = (time.monotonic() - start) * 1000
             result = ToolResult(

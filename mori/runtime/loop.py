@@ -488,10 +488,12 @@ class AgentLoop:
                 state.status = RunStatus.BLOCKED
                 await self._fire_turn_end(state)
                 result = RunResult.from_state(state, duration_ms=0.0)
-                result = result.model_copy(update={
-                    "block_reason": block.reason,
-                    "block_hook_id": block.hook_id,
-                })
+                result = result.model_copy(
+                    update={
+                        "block_reason": block.reason,
+                        "block_hook_id": block.hook_id,
+                    }
+                )
                 return result
         return await self._run_from_state(state)
 
@@ -511,11 +513,13 @@ class AgentLoop:
 
         if state.paused_reason == "await_user_input" and state.paused_tool_call is not None:
             # ask_user pause — inject user response as the paused tool call's result
-            state.messages.append(Message(
-                role="tool",
-                content=user_text,
-                tool_call_id=state.paused_tool_call.id,
-            ))
+            state.messages.append(
+                Message(
+                    role="tool",
+                    content=user_text,
+                    tool_call_id=state.paused_tool_call.id,
+                )
+            )
         else:
             # Legacy ESCALATE path — preserve existing approval-style behavior
             approved = input.get("approved", False) if isinstance(input, dict) else False
@@ -537,10 +541,12 @@ class AgentLoop:
                 state.status = RunStatus.BLOCKED
                 await self._fire_turn_end(state)
                 result = RunResult.from_state(state, duration_ms=0.0)
-                result = result.model_copy(update={
-                    "block_reason": block.reason,
-                    "block_hook_id": block.hook_id,
-                })
+                result = result.model_copy(
+                    update={
+                        "block_reason": block.reason,
+                        "block_hook_id": block.hook_id,
+                    }
+                )
                 return result
         return await self._run_from_state(state)
 
@@ -744,10 +750,12 @@ class AgentLoop:
             state, duration_ms=elapsed_ms, checkpoint_id=checkpoint_id
         )
         if "block_reason" in state.context:
-            run_result = run_result.model_copy(update={
-                "block_reason": state.context["block_reason"],
-                "block_hook_id": state.context.get("block_hook_id"),
-            })
+            run_result = run_result.model_copy(
+                update={
+                    "block_reason": state.context["block_reason"],
+                    "block_hook_id": state.context.get("block_hook_id"),
+                }
+            )
         return run_result
 
     async def _fire_turn_end(self, state: MoriState) -> None:

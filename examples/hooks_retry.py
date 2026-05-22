@@ -9,6 +9,7 @@ This example asks a question that the model cannot answer from training data
 (real-time system metrics). If the model speculates anyway, the hook injects
 feedback and forces the loop to re-think.
 """
+
 from __future__ import annotations
 
 import asyncio

@@ -5,6 +5,7 @@ Requires: ANTHROPIC_API_KEY environment variable (loaded from .env).
 Usage:
     python examples/hooks_block.py
 """
+
 from __future__ import annotations
 
 import asyncio

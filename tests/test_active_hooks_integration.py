@@ -134,7 +134,8 @@ async def test_tool_invoke_block_appends_synthetic_message(mock_model) -> None:
 
     # A synthetic blocked message appears in the conversation
     blocked_msgs = [
-        m for m in result.messages
+        m
+        for m in result.messages
         if m.role == "tool" and isinstance(m.content, str) and "BLOCKED" in m.content
     ]
     assert len(blocked_msgs) == 1
@@ -185,8 +186,7 @@ async def test_model_request_retry_appends_feedback_and_retries(mock_model) -> N
 
     # The feedback should appear as a system message in the state
     system_msgs = [
-        m for m in result.messages
-        if m.role == "system" and "think harder" in (m.content or "")
+        m for m in result.messages if m.role == "system" and "think harder" in (m.content or "")
     ]
     assert len(system_msgs) >= 1
     assert result.status != RunStatus.BLOCKED
@@ -222,8 +222,7 @@ async def test_turn_end_retry_continues_loop(mock_model) -> None:
     assert call_count == 2
     # The "not done yet" feedback appears as a system message
     feedback_msgs = [
-        m for m in result.messages
-        if m.role == "system" and "not done yet" in (m.content or "")
+        m for m in result.messages if m.role == "system" and "not done yet" in (m.content or "")
     ]
     assert len(feedback_msgs) >= 1
     # The model was invoked twice (once per iteration)
@@ -288,10 +287,7 @@ async def test_e2e_chat_loop() -> None:
 
     final = await loop.resume(paused.thread_id, "production_db")
     assert final.status == RunStatus.COMPLETED
-    assert any(
-        m.role == "tool" and m.content == "production_db"
-        for m in final.messages
-    )
+    assert any(m.role == "tool" and m.content == "production_db" for m in final.messages)
 
 
 @pytest.mark.asyncio
