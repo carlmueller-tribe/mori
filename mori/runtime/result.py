@@ -42,6 +42,9 @@ class RunResult(MoriModel):
     total_tool_calls: int = 0
     total_duration_ms: float = 0.0
     checkpoint_id: CheckpointId | None = None
+    block_reason: str | None = None
+    block_hook_id: str | None = None
+    paused_prompt: str | None = None
 
     @staticmethod
     def from_state(
@@ -69,4 +72,5 @@ class RunResult(MoriModel):
             total_tool_calls=state.total_tool_calls,
             total_duration_ms=duration_ms,
             checkpoint_id=checkpoint_id,
+            paused_prompt=state.paused_prompt,
         )

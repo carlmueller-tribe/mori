@@ -43,6 +43,7 @@ class RunStatus(StrEnum):
     FAILED = "failed"
     TIMEOUT = "timeout"
     CANCELLED = "cancelled"
+    BLOCKED = "blocked"
 
 
 class StepOutcome(StrEnum):
