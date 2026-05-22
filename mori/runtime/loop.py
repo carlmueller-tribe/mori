@@ -9,7 +9,7 @@ from typing import TYPE_CHECKING, Any, cast
 
 from mori.budget.types import BudgetSlot
 from mori.hooks.events import HookEvents, TurnEndReason
-from mori.hooks.exceptions import HookBlock
+from mori.hooks.exceptions import HookBlock, HookRetry
 from mori.hooks.payloads import TurnEndPayload, TurnStartPayload
 from mori.model.base import ModelAdapter
 from mori.runtime.result import RunResult
@@ -256,15 +256,34 @@ class AgentLoop:
         return ModelRequest(messages=messages, tools=tool_specs if tool_specs else None)
 
     async def _phase_plan(self, state: MoriState) -> None:
-        request = self._assemble_request(state)
-        if self._hooks:
-            request = await self._hooks.dispatch_before("model.request.before", request)
-        response = await self._model.invoke(request)
-        if self._hooks:
-            await self._hooks.dispatch_after("model.response.after", response)
-        state.messages.append(response.message)
-        state.total_input_tokens += response.usage.input_tokens
-        state.total_output_tokens += response.usage.output_tokens
+        max_retries = self._hooks._config.max_retry_limit if self._hooks else 3
+        retry_count = 0
+
+        while True:
+            request = self._assemble_request(state)
+            if self._hooks:
+                try:
+                    request = await self._hooks.dispatch_before("model.request.before", request)
+                except HookBlock as block:
+                    state.status = RunStatus.BLOCKED
+                    state.context["block_reason"] = block.reason
+                    state.context["block_hook_id"] = block.hook_id
+                    return
+                except HookRetry as retry:
+                    retry_count += 1
+                    if retry_count > max_retries:
+                        state.status = RunStatus.FAILED
+                        state.context["error"] = "hook_retry_exhausted"
+                        return
+                    state.messages.append(Message(role="system", content=retry.feedback))
+                    continue
+            response = await self._model.invoke(request)
+            if self._hooks:
+                await self._hooks.dispatch_after("model.response.after", response)
+            state.messages.append(response.message)
+            state.total_input_tokens += response.usage.input_tokens
+            state.total_output_tokens += response.usage.output_tokens
+            return
 
     async def _phase_act(self, state: MoriState) -> None:
         last_msg = state.messages[-1]
@@ -669,7 +688,13 @@ class AgentLoop:
         if self._obs:
             await self._obs.flush()
 
-        return RunResult.from_state(state, duration_ms=elapsed_ms, checkpoint_id=checkpoint_id)
+        run_result = RunResult.from_state(state, duration_ms=elapsed_ms, checkpoint_id=checkpoint_id)
+        if "block_reason" in state.context:
+            run_result = run_result.model_copy(update={
+                "block_reason": state.context["block_reason"],
+                "block_hook_id": state.context.get("block_hook_id"),
+            })
+        return run_result
 
     async def _fire_turn_end(self, state: MoriState) -> None:
         if not self._hooks:
