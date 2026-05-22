@@ -292,3 +292,45 @@ async def test_e2e_chat_loop() -> None:
         m.role == "tool" and m.content == "production_db"
         for m in final.messages
     )
+
+
+@pytest.mark.asyncio
+async def test_turn_end_hook_block_is_logged_not_propagated(mock_model) -> None:
+    """HookBlock raised on turn.end (which uses dispatch_before) must NOT
+    propagate; turn.end can't actually block a run that's already ending."""
+    mock_model.invoke = AsyncMock(return_value=_text("done"))
+    hooks = HookRegistry()
+
+    async def block_at_end(payload: Any) -> None:
+        raise HookBlock("late block", hook_id="late")
+
+    hooks.register(HookEvents.TURN_END, block_at_end)
+    loop = AgentLoop(model=mock_model, tools=ToolRegistry(), hooks=hooks)
+    # Must NOT raise
+    result = await loop.run("hi")
+    # Run completed normally; turn.end's HookBlock was swallowed
+    assert result.status == RunStatus.COMPLETED
+
+
+@pytest.mark.asyncio
+async def test_fire_turn_end_swallows_retry_on_early_exit_path(mock_model) -> None:
+    """When turn.start blocks AND a turn.end hook raises HookRetry,
+    the HookRetry from turn.end must not propagate to the caller."""
+    from mori.hooks.exceptions import HookRetry
+
+    mock_model.invoke = AsyncMock(return_value=_text("done"))
+    hooks = HookRegistry()
+
+    async def block_at_start(payload: Any) -> None:
+        raise HookBlock("forbid", hook_id="gate")
+
+    async def retry_at_end(payload: Any) -> None:
+        raise HookRetry("retry me", hook_id="r")
+
+    hooks.register(HookEvents.TURN_START, block_at_start)
+    hooks.register(HookEvents.TURN_END, retry_at_end)
+    loop = AgentLoop(model=mock_model, tools=ToolRegistry(), hooks=hooks)
+    # Must NOT raise — HookRetry from turn.end during early-exit is swallowed
+    result = await loop.run("anything")
+    # Run is BLOCKED (because turn.start blocked), not affected by the swallowed retry
+    assert result.status == RunStatus.BLOCKED

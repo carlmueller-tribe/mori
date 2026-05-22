@@ -7,6 +7,8 @@ import time
 from datetime import UTC, datetime
 from typing import TYPE_CHECKING, Any, cast
 
+import structlog
+
 from mori.budget.types import BudgetSlot
 from mori.hooks.events import HookEvents, TurnEndReason
 from mori.hooks.exceptions import HookBlock, HookRetry, YieldToUser
@@ -32,6 +34,8 @@ if TYPE_CHECKING:
     from mori.observability.engine import ObservabilityEngine
     from mori.observability.events import MoriEvent
     from mori.runtime.adapter import RuntimeAdapter
+
+log = structlog.get_logger()
 
 
 def _uid() -> str:
@@ -652,6 +656,13 @@ class AgentLoop:
                             reason=self._map_status_to_turn_end_reason(state),
                         ),
                     )
+                except HookBlock as block:
+                    # turn.end cannot block a completed run. Log + treat as no-block.
+                    log.warning(
+                        "hook.invalid_block_on_turn_end",
+                        hook_id=block.hook_id,
+                        reason=block.reason,
+                    )
                 except HookRetry as retry:
                     retry_count += 1
                     if retry_count > max_retries:
@@ -740,15 +751,28 @@ class AgentLoop:
         return run_result
 
     async def _fire_turn_end(self, state: MoriState) -> None:
+        """Fire turn.end on early-exit paths (e.g. blocked turn.start).
+
+        HookBlock and HookRetry raised by turn.end hooks are logged and
+        swallowed here: there is no loop to re-enter, and blocking a
+        turn that already exited has no effect.
+        """
         if not self._hooks:
             return
-        await self._hooks.dispatch_before(
-            HookEvents.TURN_END,
-            TurnEndPayload(
-                state=state,
-                reason=self._map_status_to_turn_end_reason(state),
-            ),
-        )
+        try:
+            await self._hooks.dispatch_before(
+                HookEvents.TURN_END,
+                TurnEndPayload(
+                    state=state,
+                    reason=self._map_status_to_turn_end_reason(state),
+                ),
+            )
+        except (HookBlock, HookRetry) as exc:
+            log.warning(
+                "hook.invalid_signal_on_turn_end_early_exit",
+                signal=type(exc).__name__,
+                hook_id=getattr(exc, "hook_id", None),
+            )
 
     @staticmethod
     def _map_status_to_turn_end_reason(state_or_status: RunStatus | MoriState) -> TurnEndReason:
