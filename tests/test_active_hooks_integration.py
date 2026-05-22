@@ -194,3 +194,59 @@ async def test_model_request_retry_appends_feedback_and_retries(mock_model) -> N
     assert call_count == 2
     # The model was invoked exactly once (after the retry passed)
     assert mock_model.invoke.call_count == 1
+
+
+@pytest.mark.asyncio
+async def test_turn_end_retry_continues_loop(mock_model) -> None:
+    """First completion raises HookRetry; the loop continues for another iteration."""
+    from mori.hooks.exceptions import HookRetry
+
+    # Both model responses are no-tool-call (loop wants to complete after each)
+    mock_model.invoke = AsyncMock(side_effect=[_text("first"), _text("second")])
+
+    call_count = 0
+    hooks = HookRegistry()
+
+    async def retry_once(payload: Any) -> None:
+        nonlocal call_count
+        call_count += 1
+        if call_count == 1:
+            raise HookRetry("not done yet", hook_id="finisher")
+        return None
+
+    hooks.register(HookEvents.TURN_END, retry_once)
+    loop = AgentLoop(model=mock_model, tools=ToolRegistry(), hooks=hooks)
+    result = await loop.run("hi")
+
+    # turn.end was dispatched twice: once retried, once allowed
+    assert call_count == 2
+    # The "not done yet" feedback appears as a system message
+    feedback_msgs = [
+        m for m in result.messages
+        if m.role == "system" and "not done yet" in (m.content or "")
+    ]
+    assert len(feedback_msgs) >= 1
+    # The model was invoked twice (once per iteration)
+    assert mock_model.invoke.call_count == 2
+
+
+@pytest.mark.asyncio
+async def test_turn_end_retry_bounded_by_max_retry_limit(mock_model) -> None:
+    """If turn.end keeps raising HookRetry, exhaustion sets FAILED."""
+    from mori.hooks.exceptions import HookRetry
+    from mori.hooks.types import HookConfig
+
+    # Mock returns a no-tool-call response on every invocation (always wants to end)
+    mock_model.invoke = AsyncMock(return_value=_text("done"))
+
+    hooks = HookRegistry(config=HookConfig(max_retry_limit=2))
+
+    async def always_retry(payload: Any) -> None:
+        raise HookRetry("never done", hook_id="r")
+
+    hooks.register(HookEvents.TURN_END, always_retry)
+    loop = AgentLoop(model=mock_model, tools=ToolRegistry(), hooks=hooks)
+    result = await loop.run("hi")
+
+    # On exhaustion, status is FAILED (NOT BLOCKED)
+    assert result.status == RunStatus.FAILED
