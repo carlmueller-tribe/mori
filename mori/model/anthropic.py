@@ -50,20 +50,30 @@ class AnthropicAdapter:
         import os
 
         key = api_key or os.environ.get("ANTHROPIC_API_KEY")
+        is_oauth = bool(key and key.startswith("sk-ant-oat"))
         if key:
-            if key.startswith("sk-ant-oat"):
-                # OAuth bearer token — must be sent via Authorization header,
-                # not x-api-key. The SDK reads ANTHROPIC_API_KEY from env
-                # automatically and will send BOTH headers (causing a 401 on
-                # x-api-key), so we move the value into ANTHROPIC_AUTH_TOKEN
-                # and clear ANTHROPIC_API_KEY before constructing the client.
-                os.environ.pop("ANTHROPIC_API_KEY", None)
-                os.environ["ANTHROPIC_AUTH_TOKEN"] = key
+            if is_oauth:
+                kwargs["auth_token"] = key
             else:
                 kwargs["api_key"] = key
         if base_url:
             kwargs["base_url"] = base_url
-        self._client = anthropic.AsyncAnthropic(**kwargs)
+
+        if is_oauth:
+            # The SDK reads ANTHROPIC_API_KEY from env automatically and sends
+            # BOTH headers if both api_key and auth_token are populated
+            # (causing a 401). Temporarily clear ANTHROPIC_API_KEY during
+            # client construction so the SDK's env auto-detection doesn't
+            # populate `api_key`; restore env afterwards so we don't leak
+            # the mutation to other code in the process.
+            saved = os.environ.pop("ANTHROPIC_API_KEY", None)
+            try:
+                self._client = anthropic.AsyncAnthropic(**kwargs)
+            finally:
+                if saved is not None:
+                    os.environ["ANTHROPIC_API_KEY"] = saved
+        else:
+            self._client = anthropic.AsyncAnthropic(**kwargs)
 
     @property
     def model_id(self) -> str:

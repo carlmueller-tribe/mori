@@ -104,6 +104,17 @@ class HookRegistry:
                     e.hook_id = hook_id
                 raise
             if result is not None:
+                # Audit: a hook returned a non-None payload, meaning it
+                # transformed the value. We log at info so operators can
+                # detect silent mutations (e.g. a tool.invoke.before hook
+                # rewriting tool arguments). The payload is not logged
+                # itself — it may contain conversation/tool data.
+                log.info(
+                    "hook.payload_mutated",
+                    handler=getattr(handler, "__name__", "?"),
+                    hook_id=hook_id,
+                    event_name=event_name,
+                )
                 current = result
         return current
 
