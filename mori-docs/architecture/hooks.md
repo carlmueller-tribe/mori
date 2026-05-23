@@ -38,3 +38,27 @@ identity/resource policy. Use hooks for content-aware, code-driven checks.
 `HookRetry` is bounded by `HookConfig.max_retry_limit` (default 3). Exhaustion
 sets `RunStatus.FAILED` with `error="hook_retry_exhausted"` (model.request.before)
 or `"turn_end_retry_exhausted"` (turn.end).
+
+**Scope of the limit:**
+
+- `model.request.before` retries are counted **per step** — the counter resets
+  each time `_phase_plan` is entered. If a `turn.end` retry causes the phase to
+  be re-entered, the `model.request.before` counter starts fresh for that new
+  step. With `max_retry_limit=N`, a single run can therefore see up to
+  `N × (N+1)` total `model.request.before` retries in the worst case
+  (`N` turn.end retries, each carrying `N` model.request.before retries).
+- `turn.end` retries are counted **per run** — the counter is initialized once
+  in `_run_from_state` and increments across all turn.end retries.
+
+If you want a global bound across both, use a smaller `max_retry_limit` or
+implement a hook-side counter that lives in `state.context`.
+
+## Failure boundary
+
+Any unhandled exception from inside a phase (model invocation, tool runner,
+phase helper) sets `state.status = RunStatus.FAILED` with
+`state.context["error"]` populated and lets the loop fall through to its
+closing dispatches. `turn.end` and `run.end` fire on every exit path —
+observers see exactly one pair of boundary events per `agent.run()` call.
+`asyncio.CancelledError` and `KeyboardInterrupt` are re-raised after the
+closing events fire so callers still see cancellation as cancellation.

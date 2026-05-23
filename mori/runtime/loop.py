@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import asyncio
 import secrets
 import time
 from datetime import UTC, datetime
@@ -579,78 +580,97 @@ class AgentLoop:
         max_retries = self._hooks._config.max_retry_limit if self._hooks else 3
 
         while True:  # outer retry loop
-            while state.status == RunStatus.RUNNING:
-                state.step_count += 1
-                step_start = time.monotonic()
-                step_id = StepId(f"step_{state.run_id}_{state.step_count:04d}")
+            try:
+                while state.status == RunStatus.RUNNING:
+                    state.step_count += 1
+                    step_start = time.monotonic()
+                    step_id = StepId(f"step_{state.run_id}_{state.step_count:04d}")
 
-                # Check bounds before executing
-                bound_check = self._control.check_bounds(state)
-                if not bound_check.ok:
-                    for bound in bound_check.violated_bounds:
-                        await self._emit(
-                            BoundViolationEvent(
-                                event_id=f"evt_{_uid()}",
-                                timestamp=datetime.now(UTC),
-                                run_id=state.run_id,
-                                bound_name=bound,
-                                current_value=bound_check.current_values.get("step_count", 0),
-                                limit_value=float(getattr(self._control._config, bound, 0)),
+                    # Check bounds before executing
+                    bound_check = self._control.check_bounds(state)
+                    if not bound_check.ok:
+                        for bound in bound_check.violated_bounds:
+                            await self._emit(
+                                BoundViolationEvent(
+                                    event_id=f"evt_{_uid()}",
+                                    timestamp=datetime.now(UTC),
+                                    run_id=state.run_id,
+                                    bound_name=bound,
+                                    current_value=bound_check.current_values.get("step_count", 0),
+                                    limit_value=float(getattr(self._control._config, bound, 0)),
+                                )
                             )
+                        state.status = RunStatus.FAILED
+                        break
+
+                    # Periodic checkpoint
+                    if (
+                        self._checkpointer
+                        and state.step_count % self._checkpoint_every_n_steps == 0
+                    ):
+                        await self._checkpointer.save(state)
+
+                    await self._emit(
+                        StepStartEvent(
+                            event_id=f"evt_{_uid()}",
+                            timestamp=datetime.now(UTC),
+                            run_id=state.run_id,
+                            step_id=step_id,
+                            step_number=state.step_count,
+                            phase=Phase.PLAN,  # noqa: E501
                         )
-                    state.status = RunStatus.FAILED
-                    break
-
-                # Periodic checkpoint
-                if self._checkpointer and state.step_count % self._checkpoint_every_n_steps == 0:
-                    await self._checkpointer.save(state)
-
-                await self._emit(
-                    StepStartEvent(
-                        event_id=f"evt_{_uid()}",
-                        timestamp=datetime.now(UTC),
-                        run_id=state.run_id,
-                        step_id=step_id,
-                        step_number=state.step_count,
-                        phase=Phase.PLAN,  # noqa: E501
                     )
-                )
 
-                await self._phase_retrieve(state)
-                await self._pre_plan_compact(state)
-                await self._phase_plan(state)
-                await self._phase_act(state)
+                    await self._phase_retrieve(state)
+                    await self._pre_plan_compact(state)
+                    await self._phase_plan(state)
+                    await self._phase_act(state)
 
-                # Check if _phase_act caused a PAUSED state (e.g. permission ESCALATE)
-                # cast needed: mypy narrows state.status to RUNNING in while-condition, but
-                # _phase_act can mutate it to PAUSED.
-                if cast(RunStatus, state.status) == RunStatus.PAUSED:
-                    break
+                    # Check if _phase_act caused a PAUSED state (e.g. permission ESCALATE)
+                    # cast needed: mypy narrows state.status to RUNNING in while-condition,
+                    # but _phase_act can mutate it to PAUSED.
+                    if cast(RunStatus, state.status) == RunStatus.PAUSED:
+                        break
 
-                outcome = self._phase_evaluate(state)
-                await self._phase_update(state)
+                    outcome = self._phase_evaluate(state)
+                    await self._phase_update(state)
 
-                step_elapsed = (time.monotonic() - step_start) * 1000
-                await self._emit(
-                    StepEndEvent(
-                        event_id=f"evt_{_uid()}",
-                        timestamp=datetime.now(UTC),
-                        run_id=state.run_id,
-                        step_id=step_id,
-                        step_number=state.step_count,
-                        outcome=outcome,
-                        input_tokens=0,
-                        output_tokens=0,
-                        duration_ms=step_elapsed,
+                    step_elapsed = (time.monotonic() - step_start) * 1000
+                    await self._emit(
+                        StepEndEvent(
+                            event_id=f"evt_{_uid()}",
+                            timestamp=datetime.now(UTC),
+                            run_id=state.run_id,
+                            step_id=step_id,
+                            step_number=state.step_count,
+                            outcome=outcome,
+                            input_tokens=0,
+                            output_tokens=0,
+                            duration_ms=step_elapsed,
+                        )
                     )
-                )
 
-                if outcome == StepOutcome.SUCCESS:
-                    state.status = RunStatus.COMPLETED
-                    break
+                    if outcome == StepOutcome.SUCCESS:
+                        state.status = RunStatus.COMPLETED
+                        break
 
-                self._control.record_progress()
-                state.last_progress_at = datetime.now(UTC)
+                    self._control.record_progress()
+                    state.last_progress_at = datetime.now(UTC)
+            except (asyncio.CancelledError, KeyboardInterrupt):
+                # Cancellation must propagate, but we still want turn.end
+                # to fire. Mark FAILED, run the closing dispatch, and re-raise
+                # after the outer loop exits (handled below).
+                state.status = RunStatus.FAILED
+                state.context["error"] = "cancelled"
+                state.context["_reraise_cancelled"] = True
+                break
+            except Exception as exc:
+                # Unhandled error from a phase: set FAILED and continue to
+                # turn.end + post-loop side effects so observers see the run's
+                # closing boundary. The error string is propagated via
+                # state.context for inclusion in the final RunResult.
+                state.status = RunStatus.FAILED
+                state.context["error"] = f"unhandled: {type(exc).__name__}: {exc}"
 
             # turn.end with HookRetry handling (FIRST after inner loop)
             if self._hooks:
@@ -756,6 +776,11 @@ class AgentLoop:
                     "block_hook_id": state.context.get("block_hook_id"),
                 }
             )
+        # If a cancellation slipped through the inner loop, the closing
+        # boundary events have now fired — re-raise so the caller sees
+        # the cancellation as cancellation, not as a FAILED RunResult.
+        if state.context.pop("_reraise_cancelled", False):
+            raise asyncio.CancelledError()
         return run_result
 
     async def _fire_turn_end(self, state: MoriState) -> None:

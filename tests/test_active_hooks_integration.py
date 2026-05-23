@@ -7,7 +7,7 @@ from unittest.mock import AsyncMock
 
 import pytest
 
-from mori.hooks.events import HookEvents
+from mori.hooks.events import HookEvents, TurnEndReason
 from mori.hooks.exceptions import HookBlock
 from mori.hooks.registry import HookRegistry
 from mori.model.base import ModelAdapter
@@ -330,3 +330,24 @@ async def test_fire_turn_end_swallows_retry_on_early_exit_path(mock_model) -> No
     result = await loop.run("anything")
     # Run is BLOCKED (because turn.start blocked), not affected by the swallowed retry
     assert result.status == RunStatus.BLOCKED
+
+
+@pytest.mark.asyncio
+async def test_unhandled_exception_in_phase_still_fires_turn_end(mock_model) -> None:
+    """If a phase raises an unhandled exception, turn.end still fires
+    (with a FAILED reason) so observers see the run's closing boundary."""
+    mock_model.invoke = AsyncMock(side_effect=RuntimeError("boom"))
+    hooks = HookRegistry()
+    fired: list[Any] = []
+
+    async def capture_end(payload: Any) -> None:
+        fired.append(payload)
+        return None
+
+    hooks.register(HookEvents.TURN_END, capture_end)
+    loop = AgentLoop(model=mock_model, tools=ToolRegistry(), hooks=hooks)
+    result = await loop.run("hi")
+
+    assert len(fired) == 1
+    assert fired[0].reason == TurnEndReason.ERRORED
+    assert result.status == RunStatus.FAILED
