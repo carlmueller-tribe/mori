@@ -2,12 +2,18 @@
 
 from __future__ import annotations
 
+import asyncio
 import secrets
 import time
 from datetime import UTC, datetime
 from typing import TYPE_CHECKING, Any, cast
 
+import structlog
+
 from mori.budget.types import BudgetSlot
+from mori.hooks.events import HookEvents, TurnEndReason
+from mori.hooks.exceptions import HookBlock, HookRetry, YieldToUser
+from mori.hooks.payloads import TurnEndPayload, TurnStartPayload
 from mori.model.base import ModelAdapter
 from mori.runtime.result import RunResult
 from mori.runtime.state import MoriState
@@ -29,6 +35,8 @@ if TYPE_CHECKING:
     from mori.observability.engine import ObservabilityEngine
     from mori.observability.events import MoriEvent
     from mori.runtime.adapter import RuntimeAdapter
+
+log = structlog.get_logger()
 
 
 def _uid() -> str:
@@ -253,15 +261,34 @@ class AgentLoop:
         return ModelRequest(messages=messages, tools=tool_specs if tool_specs else None)
 
     async def _phase_plan(self, state: MoriState) -> None:
-        request = self._assemble_request(state)
-        if self._hooks:
-            request = await self._hooks.dispatch_before("model.request.before", request)
-        response = await self._model.invoke(request)
-        if self._hooks:
-            await self._hooks.dispatch_after("model.response.after", response)
-        state.messages.append(response.message)
-        state.total_input_tokens += response.usage.input_tokens
-        state.total_output_tokens += response.usage.output_tokens
+        max_retries = self._hooks._config.max_retry_limit if self._hooks else 3
+        retry_count = 0
+
+        while True:
+            request = self._assemble_request(state)
+            if self._hooks:
+                try:
+                    request = await self._hooks.dispatch_before("model.request.before", request)
+                except HookBlock as block:
+                    state.status = RunStatus.BLOCKED
+                    state.context["block_reason"] = block.reason
+                    state.context["block_hook_id"] = block.hook_id
+                    return
+                except HookRetry as retry:
+                    retry_count += 1
+                    if retry_count > max_retries:
+                        state.status = RunStatus.FAILED
+                        state.context["error"] = "hook_retry_exhausted"
+                        return
+                    state.messages.append(Message(role="system", content=retry.feedback))
+                    continue
+            response = await self._model.invoke(request)
+            if self._hooks:
+                await self._hooks.dispatch_after("model.response.after", response)
+            state.messages.append(response.message)
+            state.total_input_tokens += response.usage.input_tokens
+            state.total_output_tokens += response.usage.output_tokens
+            return
 
     async def _phase_act(self, state: MoriState) -> None:
         last_msg = state.messages[-1]
@@ -329,7 +356,17 @@ class AgentLoop:
 
             # Before hook fires first so ToolInvokeEvent records actual arguments
             if self._hooks:
-                call = await self._hooks.dispatch_before("tool.invoke.before", call)
+                try:
+                    call = await self._hooks.dispatch_before("tool.invoke.before", call)
+                except HookBlock as block:
+                    blocked_msg = Message(
+                        role="tool",
+                        content=f"BLOCKED by {block.hook_id}: {block.reason}",
+                        tool_call_id=call.id,
+                    )
+                    state.messages.append(blocked_msg)
+                    state.total_tool_calls += 1
+                    continue  # skip this tool, process next call in the loop
 
             await self._emit(
                 ToolInvokeEvent(
@@ -342,7 +379,16 @@ class AgentLoop:
                 )
             )
 
-            result = await self._tools.invoke(call.name, call.arguments)
+            try:
+                result = await self._tools.invoke(call.name, call.arguments)
+            except YieldToUser as y:
+                state.status = RunStatus.PAUSED
+                state.paused_reason = "await_user_input"
+                state.paused_prompt = y.question
+                state.paused_tool_call = call
+                if self._checkpointer:
+                    await self._checkpointer.save(state)
+                return  # exits _phase_act; _run_from_state sees PAUSED and exits
 
             # After hook (observe ToolResult)
             if self._hooks:
@@ -433,9 +479,26 @@ class AgentLoop:
                 )
             )
             return result
+        if self._hooks:
+            try:
+                await self._hooks.dispatch_before(
+                    HookEvents.TURN_START,
+                    TurnStartPayload(input=task, thread_id=state.thread_id, is_resume=False),
+                )
+            except HookBlock as block:
+                state.status = RunStatus.BLOCKED
+                await self._fire_turn_end(state)
+                result = RunResult.from_state(state, duration_ms=0.0)
+                result = result.model_copy(
+                    update={
+                        "block_reason": block.reason,
+                        "block_hook_id": block.hook_id,
+                    }
+                )
+                return result
         return await self._run_from_state(state)
 
-    async def resume(self, thread_id: ThreadId, input: dict[str, Any]) -> RunResult:
+    async def resume(self, thread_id: ThreadId, input: dict[str, Any] | str) -> RunResult:
         if not self._checkpointer:
             raise ValueError("Cannot resume: no checkpointer configured")
         cp = await self._checkpointer.load_latest(thread_id)
@@ -446,12 +509,46 @@ class AgentLoop:
             raise ValueError(
                 f"Cannot resume thread {thread_id}: checkpoint has status '{state.status.value}', expected 'paused'"  # noqa: E501
             )
-        approved = input.get("approved", False)
-        msg = f"[Resume] {'Approved' if approved else 'Rejected'}. Details: {input}"
-        state.messages.append(Message(role="user", content=msg))
+
+        user_text: str = input if isinstance(input, str) else input.get("response", "")
+
+        if state.paused_reason == "await_user_input" and state.paused_tool_call is not None:
+            # ask_user pause — inject user response as the paused tool call's result
+            state.messages.append(
+                Message(
+                    role="tool",
+                    content=user_text,
+                    tool_call_id=state.paused_tool_call.id,
+                )
+            )
+        else:
+            # Legacy ESCALATE path — preserve existing approval-style behavior
+            approved = input.get("approved", False) if isinstance(input, dict) else False
+            msg = f"[Resume] {'Approved' if approved else 'Rejected'}. Details: {input}"
+            state.messages.append(Message(role="user", content=msg))
+
         state.status = RunStatus.RUNNING
         state.paused_reason = None
         state.paused_tool_call = None
+        state.paused_prompt = None
+
+        if self._hooks:
+            try:
+                await self._hooks.dispatch_before(
+                    HookEvents.TURN_START,
+                    TurnStartPayload(input=user_text, thread_id=thread_id, is_resume=True),
+                )
+            except HookBlock as block:
+                state.status = RunStatus.BLOCKED
+                await self._fire_turn_end(state)
+                result = RunResult.from_state(state, duration_ms=0.0)
+                result = result.model_copy(
+                    update={
+                        "block_reason": block.reason,
+                        "block_hook_id": block.hook_id,
+                    }
+                )
+                return result
         return await self._run_from_state(state)
 
     async def _run_from_state(self, state: MoriState) -> RunResult:
@@ -479,79 +576,131 @@ class AgentLoop:
                 "run.start", {"task": state.task, "run_id": state.run_id}
             )  # noqa: E501
 
-        while state.status == RunStatus.RUNNING:
-            state.step_count += 1
-            step_start = time.monotonic()
-            step_id = StepId(f"step_{state.run_id}_{state.step_count:04d}")
+        retry_count = 0
+        max_retries = self._hooks._config.max_retry_limit if self._hooks else 3
 
-            # Check bounds before executing
-            bound_check = self._control.check_bounds(state)
-            if not bound_check.ok:
-                for bound in bound_check.violated_bounds:
+        while True:  # outer retry loop
+            try:
+                while state.status == RunStatus.RUNNING:
+                    state.step_count += 1
+                    step_start = time.monotonic()
+                    step_id = StepId(f"step_{state.run_id}_{state.step_count:04d}")
+
+                    # Check bounds before executing
+                    bound_check = self._control.check_bounds(state)
+                    if not bound_check.ok:
+                        for bound in bound_check.violated_bounds:
+                            await self._emit(
+                                BoundViolationEvent(
+                                    event_id=f"evt_{_uid()}",
+                                    timestamp=datetime.now(UTC),
+                                    run_id=state.run_id,
+                                    bound_name=bound,
+                                    current_value=bound_check.current_values.get("step_count", 0),
+                                    limit_value=float(getattr(self._control._config, bound, 0)),
+                                )
+                            )
+                        state.status = RunStatus.FAILED
+                        break
+
+                    # Periodic checkpoint
+                    if (
+                        self._checkpointer
+                        and state.step_count % self._checkpoint_every_n_steps == 0
+                    ):
+                        await self._checkpointer.save(state)
+
                     await self._emit(
-                        BoundViolationEvent(
+                        StepStartEvent(
                             event_id=f"evt_{_uid()}",
                             timestamp=datetime.now(UTC),
                             run_id=state.run_id,
-                            bound_name=bound,
-                            current_value=bound_check.current_values.get("step_count", 0),
-                            limit_value=float(getattr(self._control._config, bound, 0)),
+                            step_id=step_id,
+                            step_number=state.step_count,
+                            phase=Phase.PLAN,  # noqa: E501
                         )
                     )
+
+                    await self._phase_retrieve(state)
+                    await self._pre_plan_compact(state)
+                    await self._phase_plan(state)
+                    await self._phase_act(state)
+
+                    # Check if _phase_act caused a PAUSED state (e.g. permission ESCALATE)
+                    # cast needed: mypy narrows state.status to RUNNING in while-condition,
+                    # but _phase_act can mutate it to PAUSED.
+                    if cast(RunStatus, state.status) == RunStatus.PAUSED:
+                        break
+
+                    outcome = self._phase_evaluate(state)
+                    await self._phase_update(state)
+
+                    step_elapsed = (time.monotonic() - step_start) * 1000
+                    await self._emit(
+                        StepEndEvent(
+                            event_id=f"evt_{_uid()}",
+                            timestamp=datetime.now(UTC),
+                            run_id=state.run_id,
+                            step_id=step_id,
+                            step_number=state.step_count,
+                            outcome=outcome,
+                            input_tokens=0,
+                            output_tokens=0,
+                            duration_ms=step_elapsed,
+                        )
+                    )
+
+                    if outcome == StepOutcome.SUCCESS:
+                        state.status = RunStatus.COMPLETED
+                        break
+
+                    self._control.record_progress()
+                    state.last_progress_at = datetime.now(UTC)
+            except (asyncio.CancelledError, KeyboardInterrupt):
+                # Cancellation must propagate, but we still want turn.end
+                # to fire. Mark FAILED, run the closing dispatch, and re-raise
+                # after the outer loop exits (handled below).
                 state.status = RunStatus.FAILED
+                state.context["error"] = "cancelled"
+                state.context["_reraise_cancelled"] = True
                 break
+            except Exception as exc:
+                # Unhandled error from a phase: set FAILED and continue to
+                # turn.end + post-loop side effects so observers see the run's
+                # closing boundary. The error string is propagated via
+                # state.context for inclusion in the final RunResult.
+                state.status = RunStatus.FAILED
+                state.context["error"] = f"unhandled: {type(exc).__name__}: {exc}"
 
-            # Periodic checkpoint
-            if self._checkpointer and state.step_count % self._checkpoint_every_n_steps == 0:
-                await self._checkpointer.save(state)
+            # turn.end with HookRetry handling (FIRST after inner loop)
+            if self._hooks:
+                try:
+                    await self._hooks.dispatch_before(
+                        HookEvents.TURN_END,
+                        TurnEndPayload(
+                            state=state,
+                            reason=self._map_status_to_turn_end_reason(state),
+                        ),
+                    )
+                except HookBlock as block:
+                    # turn.end cannot block a completed run. Log + treat as no-block.
+                    log.warning(
+                        "hook.invalid_block_on_turn_end",
+                        hook_id=block.hook_id,
+                        reason=block.reason,
+                    )
+                except HookRetry as retry:
+                    retry_count += 1
+                    if retry_count > max_retries:
+                        state.status = RunStatus.FAILED
+                        state.context["error"] = "turn_end_retry_exhausted"
+                        break
+                    state.messages.append(Message(role="system", content=retry.feedback))
+                    state.status = RunStatus.RUNNING
+                    continue  # re-enter outer loop, which re-enters inner phase loop
+            break  # no HookRetry raised — exit outer loop
 
-            await self._emit(
-                StepStartEvent(
-                    event_id=f"evt_{_uid()}",
-                    timestamp=datetime.now(UTC),
-                    run_id=state.run_id,
-                    step_id=step_id,
-                    step_number=state.step_count,
-                    phase=Phase.PLAN,  # noqa: E501
-                )
-            )
-
-            await self._phase_retrieve(state)
-            await self._pre_plan_compact(state)
-            await self._phase_plan(state)
-            await self._phase_act(state)
-
-            # Check if _phase_act caused a PAUSED state (e.g. permission ESCALATE)
-            # cast needed: mypy narrows state.status to RUNNING in while-condition, but
-            # _phase_act can mutate it to PAUSED.
-            if cast(RunStatus, state.status) == RunStatus.PAUSED:
-                break
-
-            outcome = self._phase_evaluate(state)
-            await self._phase_update(state)
-
-            step_elapsed = (time.monotonic() - step_start) * 1000
-            await self._emit(
-                StepEndEvent(
-                    event_id=f"evt_{_uid()}",
-                    timestamp=datetime.now(UTC),
-                    run_id=state.run_id,
-                    step_id=step_id,
-                    step_number=state.step_count,
-                    outcome=outcome,
-                    input_tokens=0,
-                    output_tokens=0,
-                    duration_ms=step_elapsed,
-                )
-            )
-
-            if outcome == StepOutcome.SUCCESS:
-                state.status = RunStatus.COMPLETED
-                break
-
-            self._control.record_progress()
-            state.last_progress_at = datetime.now(UTC)
-
+        # POST-OUTER-LOOP: all one-time side effects
         elapsed_ms = (time.monotonic() - start_time) * 1000
 
         # Save final checkpoint (always, if checkpointer is present)
@@ -617,4 +766,63 @@ class AgentLoop:
         if self._obs:
             await self._obs.flush()
 
-        return RunResult.from_state(state, duration_ms=elapsed_ms, checkpoint_id=checkpoint_id)
+        run_result = RunResult.from_state(
+            state, duration_ms=elapsed_ms, checkpoint_id=checkpoint_id
+        )
+        if "block_reason" in state.context:
+            run_result = run_result.model_copy(
+                update={
+                    "block_reason": state.context["block_reason"],
+                    "block_hook_id": state.context.get("block_hook_id"),
+                }
+            )
+        # If a cancellation slipped through the inner loop, the closing
+        # boundary events have now fired — re-raise so the caller sees
+        # the cancellation as cancellation, not as a FAILED RunResult.
+        if state.context.pop("_reraise_cancelled", False):
+            raise asyncio.CancelledError()
+        return run_result
+
+    async def _fire_turn_end(self, state: MoriState) -> None:
+        """Fire turn.end on early-exit paths (e.g. blocked turn.start).
+
+        HookBlock and HookRetry raised by turn.end hooks are logged and
+        swallowed here: there is no loop to re-enter, and blocking a
+        turn that already exited has no effect.
+        """
+        if not self._hooks:
+            return
+        try:
+            await self._hooks.dispatch_before(
+                HookEvents.TURN_END,
+                TurnEndPayload(
+                    state=state,
+                    reason=self._map_status_to_turn_end_reason(state),
+                ),
+            )
+        except (HookBlock, HookRetry) as exc:
+            log.warning(
+                "hook.invalid_signal_on_turn_end_early_exit",
+                signal=type(exc).__name__,
+                hook_id=getattr(exc, "hook_id", None),
+            )
+
+    @staticmethod
+    def _map_status_to_turn_end_reason(state_or_status: RunStatus | MoriState) -> TurnEndReason:
+        if isinstance(state_or_status, RunStatus):
+            status = state_or_status
+            paused_reason = None
+        else:
+            status = state_or_status.status
+            paused_reason = state_or_status.paused_reason
+        if status == RunStatus.COMPLETED:
+            return TurnEndReason.COMPLETED
+        if status == RunStatus.PAUSED:
+            if paused_reason == "await_user_input":
+                return TurnEndReason.PAUSED_AWAIT_USER
+            return TurnEndReason.PAUSED_ESCALATE
+        if status == RunStatus.FAILED:
+            return TurnEndReason.ERRORED
+        if status == RunStatus.BLOCKED:
+            return TurnEndReason.BLOCKED
+        return TurnEndReason.EXHAUSTED

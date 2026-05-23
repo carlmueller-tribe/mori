@@ -34,9 +34,11 @@ class MoriState(MoriModel):
     # Skills
     active_skill_payload: Any | None = None
 
-    # Pause context (set when status == RunStatus.PAUSED after ESCALATE decision)
+    # Pause context (set when status == RunStatus.PAUSED after ESCALATE decision
+    # or after an ask_user yield)
     paused_reason: str | None = None
     paused_tool_call: ToolCall | None = None
+    paused_prompt: str | None = None
 
     # Counters
     step_count: int = 0

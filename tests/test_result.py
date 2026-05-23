@@ -87,3 +87,40 @@ def test_run_result_json_roundtrip():
     restored = RunResult.model_validate_json(json_str)
     assert restored.final_output == "done"
     assert restored.total_steps == 1
+
+
+def test_result_blocked_fields_default_none() -> None:
+    from mori.runtime.result import RunResult
+    from mori.types import RunId, RunStatus, ThreadId
+
+    r = RunResult(
+        run_id=RunId("r1"),
+        thread_id=ThreadId("t1"),
+        status=RunStatus.COMPLETED,
+        task="x",
+    )
+    assert r.block_reason is None
+    assert r.block_hook_id is None
+    assert r.paused_prompt is None
+
+
+def test_result_blocked_fields_settable() -> None:
+    from mori.runtime.result import RunResult
+    from mori.types import RunId, RunStatus, ThreadId
+
+    r = RunResult(
+        run_id=RunId("r1"),
+        thread_id=ThreadId("t1"),
+        status=RunStatus.BLOCKED,
+        task="x",
+        block_reason="prod migration",
+        block_hook_id="hook_abc",
+    )
+    assert r.status == "blocked"
+    assert r.block_reason == "prod migration"
+
+
+def test_run_status_has_blocked() -> None:
+    from mori.types import RunStatus
+
+    assert RunStatus.BLOCKED == "blocked"

@@ -45,11 +45,35 @@ class AnthropicAdapter:
         self._model = model
         self._max_tokens = max_tokens
         kwargs: dict[str, Any] = {}
-        if api_key:
-            kwargs["api_key"] = api_key
+        # Detect OAuth bearer tokens (e.g. from `claude setup-token`) by prefix
+        # and route them via auth_token. Anthropic Console API keys go via api_key.
+        import os
+
+        key = api_key or os.environ.get("ANTHROPIC_API_KEY")
+        is_oauth = bool(key and key.startswith("sk-ant-oat"))
+        if key:
+            if is_oauth:
+                kwargs["auth_token"] = key
+            else:
+                kwargs["api_key"] = key
         if base_url:
             kwargs["base_url"] = base_url
-        self._client = anthropic.AsyncAnthropic(**kwargs)
+
+        if is_oauth:
+            # The SDK reads ANTHROPIC_API_KEY from env automatically and sends
+            # BOTH headers if both api_key and auth_token are populated
+            # (causing a 401). Temporarily clear ANTHROPIC_API_KEY during
+            # client construction so the SDK's env auto-detection doesn't
+            # populate `api_key`; restore env afterwards so we don't leak
+            # the mutation to other code in the process.
+            saved = os.environ.pop("ANTHROPIC_API_KEY", None)
+            try:
+                self._client = anthropic.AsyncAnthropic(**kwargs)
+            finally:
+                if saved is not None:
+                    os.environ["ANTHROPIC_API_KEY"] = saved
+        else:
+            self._client = anthropic.AsyncAnthropic(**kwargs)
 
     @property
     def model_id(self) -> str:

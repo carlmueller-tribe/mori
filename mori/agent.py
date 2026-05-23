@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from collections.abc import Callable
-from typing import Any
+from typing import Any, ClassVar
 
 from mori.control.bounds import ControlBounds, ControlConfig
 from mori.model.anthropic import AnthropicAdapter
@@ -19,6 +19,8 @@ from mori.types import ThreadId
 
 class MoriBuilder:
     """Fluent builder for constructing a Mori agent."""
+
+    _NATIVE_TOOLS: ClassVar[set[str]] = {"ask_user"}
 
     def __init__(self) -> None:
         self._model_adapter: Any = None
@@ -36,6 +38,7 @@ class MoriBuilder:
         self._hook_handlers: list[tuple[str, Any, int]] = []
         self._embedder: Any | None = None
         self._runtime_adapter: Any | None = None
+        self._disabled_native_tools: set[str] = set()
 
     def model(
         self,
@@ -67,6 +70,13 @@ class MoriBuilder:
     ) -> MoriBuilder:
         tool_name = name or fn.__name__
         self._tools.append((tool_name, fn, description, input_schema))
+        return self
+
+    def disable_native_tool(self, name: str) -> MoriBuilder:
+        """Disable a native (Mori-shipped) tool that would otherwise be auto-registered."""
+        if name not in self._NATIVE_TOOLS:
+            raise ValueError(f"'{name}' is not a native tool")
+        self._disabled_native_tools.add(name)
         return self
 
     def cli(
@@ -207,6 +217,25 @@ class MoriBuilder:
             registry.register(tool_name, fn, description=desc, input_schema=schema)
         for cli in self._cli_tools:
             registry.register_cli(**cli)
+
+        # Native tools (Mori-shipped) — register unless disabled
+        if "ask_user" not in self._disabled_native_tools:
+            from mori.tools.native import ask_user as ask_user_fn
+
+            registry.register(
+                "ask_user",
+                ask_user_fn,
+                description=(
+                    "Ask the calling user a question and wait for their "
+                    "response. Use only when you cannot proceed without "
+                    "human input."
+                ),
+                input_schema={
+                    "type": "object",
+                    "properties": {"question": {"type": "string"}},
+                    "required": ["question"],
+                },
+            )
 
         # 4. Memory
         memory_module = None

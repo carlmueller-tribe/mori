@@ -16,6 +16,7 @@ class HookConfig(MoriModel):
     hook_timeout_sec: float = 10.0
     fail_open: bool = True
     log_hook_errors: bool = True
+    max_retry_limit: int = 3
 
 
 class HookRegistration(MoriModel):

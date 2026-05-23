@@ -87,3 +87,36 @@ def test_state_memory_slice_settable():
         truncated=False,
     )
     assert s.memory_slice is not None and s.memory_slice.query == "test"
+
+
+def test_paused_prompt_default_none() -> None:
+    from datetime import UTC, datetime
+
+    from mori.runtime.state import MoriState
+    from mori.types import RunId, ThreadId
+
+    state = MoriState(
+        run_id=RunId("r1"),
+        thread_id=ThreadId("t1"),
+        task="x",
+        started_at=datetime.now(UTC),
+        last_progress_at=datetime.now(UTC),
+    )
+    assert state.paused_prompt is None
+
+
+def test_paused_prompt_settable() -> None:
+    from datetime import UTC, datetime
+
+    from mori.runtime.state import MoriState
+    from mori.types import RunId, ThreadId
+
+    state = MoriState(
+        run_id=RunId("r1"),
+        thread_id=ThreadId("t1"),
+        task="x",
+        started_at=datetime.now(UTC),
+        last_progress_at=datetime.now(UTC),
+        paused_prompt="which db?",
+    )
+    assert state.paused_prompt == "which db?"

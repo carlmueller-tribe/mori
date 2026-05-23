@@ -11,6 +11,7 @@ from typing import Any
 
 import structlog
 
+from mori.hooks.exceptions import HookBlock, HookRetry
 from mori.hooks.types import HookConfig, HookHandler, HookRegistration
 
 log = structlog.get_logger()
@@ -73,6 +74,9 @@ class HookRegistry:
                 loop = asyncio.get_running_loop()
                 awaitable = loop.run_in_executor(None, handler, payload)
             return await asyncio.wait_for(awaitable, timeout=self._config.hook_timeout_sec)
+        except (HookBlock, HookRetry):
+            # Policy signals are NEVER swallowed, regardless of fail_open.
+            raise
         except TimeoutError:
             if self._config.log_hook_errors:
                 log.warning("hook.timeout", handler=getattr(handler, "__name__", "?"))
@@ -88,15 +92,47 @@ class HookRegistry:
 
     async def dispatch_before(self, event_name: str, payload: Any) -> Any:
         current = payload
-        for _priority, _hook_id, handler in self._hooks.get(event_name, []):
-            result = await self._call(handler, current)
+        for _priority, hook_id, handler in self._hooks.get(event_name, []):
+            try:
+                result = await self._call(handler, current)
+            except HookBlock as e:
+                if e.hook_id is None:
+                    e.hook_id = hook_id
+                raise
+            except HookRetry as e:
+                if e.hook_id is None:
+                    e.hook_id = hook_id
+                raise
             if result is not None:
+                # Audit: a hook returned a non-None payload, meaning it
+                # transformed the value. We log at info so operators can
+                # detect silent mutations (e.g. a tool.invoke.before hook
+                # rewriting tool arguments). The payload is not logged
+                # itself — it may contain conversation/tool data.
+                log.info(
+                    "hook.payload_mutated",
+                    handler=getattr(handler, "__name__", "?"),
+                    hook_id=hook_id,
+                    event_name=event_name,
+                )
                 current = result
         return current
 
     async def dispatch_after(self, event_name: str, payload: Any) -> None:
-        for _priority, _hook_id, handler in self._hooks.get(event_name, []):
-            await self._call(handler, payload)
+        for _priority, hook_id, handler in self._hooks.get(event_name, []):
+            try:
+                await self._call(handler, payload)
+            except (HookBlock, HookRetry) as exc:
+                # Block/retry on after-event is a hook author error — log + swallow.
+                # Other handlers continue to process.
+                if self._config.log_hook_errors:
+                    log.warning(
+                        "hook.invalid_signal_on_after",
+                        handler=getattr(handler, "__name__", "?"),
+                        hook_id=hook_id,
+                        event_name=event_name,
+                        signal=type(exc).__name__,
+                    )
 
     def list_hooks(self, event_name: str | None = None) -> list[HookRegistration]:
         if event_name is not None:

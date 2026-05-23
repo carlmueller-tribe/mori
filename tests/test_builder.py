@@ -60,6 +60,7 @@ def test_builder_registers_tool_function():
             Mori.builder()
             .model("anthropic", api_key="test")
             .tool(add, description="Add two numbers")
+            .disable_native_tool("ask_user")
             .build()
         )
         specs = agent.tools.list_specs()
@@ -121,6 +122,11 @@ async def test_mori_run():
 def test_tools_property():
     with patch("mori.agent.AnthropicAdapter") as MockAdapter:
         MockAdapter.return_value = AsyncMock()
-        agent = Mori.builder().model("anthropic", api_key="test").build()
+        agent = (
+            Mori.builder()
+            .model("anthropic", api_key="test")
+            .disable_native_tool("ask_user")
+            .build()
+        )
         assert agent.tools is not None
         assert agent.tools.list_specs() == []
