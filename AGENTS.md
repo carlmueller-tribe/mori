@@ -171,6 +171,37 @@ docs/engineering/   # development workflow guides
 
 ---
 
+## Secrets and `.env`
+
+`.env` does NOT contain raw secrets. It contains 1Password references:
+
+```
+ANTHROPIC_API_KEY="op://Employee/ANTHROPIC_API_KEY/credential"
+```
+
+Run examples through the wrapper so `op` resolves references at process start
+and secrets never touch disk:
+
+```bash
+examples/run-with-op.sh examples/basic_agent.py
+```
+
+The wrapper is just `op run --env-file=./.env -- uv run python "$@"`.
+
+If `python-dotenv` loads `.env` directly (no `op run`), the literal `op://...`
+string becomes the API key and the call will fail with an auth error — that is
+expected. Always go through `op run` (or the wrapper) for any example that
+needs a real model call.
+
+First-time setup:
+
+```bash
+brew install 1password-cli   # if not already installed
+op signin                    # sign into Tribe's 1Password account
+```
+
+---
+
 ## Dependency policy
 
 New dependencies must go through a PR — never add deps directly on `main`. This ensures lockfile diffs are reviewed before reaching other developers.
