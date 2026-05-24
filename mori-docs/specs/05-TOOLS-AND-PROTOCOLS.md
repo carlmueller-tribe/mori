@@ -183,7 +183,84 @@ async def add(a: int, b: int) -> int:
 
 Inference uses `inspect.signature` + type annotation mapping. Pydantic models as argument types produce their full JSON Schema. Unannotated arguments default to `{"type": "string"}`.
 
-## 5. MCP Client
+## 5. Built-in Native Tools
+
+Mori ships a small set of built-in native tools that the agent can use to interact with its runtime environment. They are registered automatically by the builder when enabled. Each is opt-in — autonomous agents (the default) should not be able to invoke them by default.
+
+### 5.1 `ask_user`
+
+Pauses the agent and yields control to the caller for input. The native primitive for chat-mode agents.
+
+```python
+async def ask_user(question: str) -> str:
+    """Ask the human user a question and wait for their response.
+
+    Args:
+        question: The question to pose. Should be specific and actionable.
+
+    Returns:
+        The user's response as a string. (Returned only after `agent.resume(...)`
+        is called by the caller; the agent's perspective is that the tool
+        call blocks until the response arrives.)
+    """
+```
+
+**Enabling.** Disabled by default. Opt-in via the builder:
+
+```python
+agent = (
+    Mori.builder()
+    .model("anthropic", model="claude-sonnet-4-6")
+    .checkpointer(SqliteCheckpointer(path="./threads.db"))
+    .ask_user()                  # enable chat mode
+    .build()
+)
+```
+
+**Requires checkpointer.** Calling `.ask_user()` on a builder without `.checkpointer(...)` raises `BuilderError("ask_user requires a checkpointer; call .checkpointer() first")` at build time. The pause must persist somewhere for `resume()` to work.
+
+**Pause/resume lifecycle.** When the agent calls `ask_user`, the tool raises the internal `YieldToUser` signal (not exported; see Spec 02 Section 7.4). The runtime catches it and:
+
+1. Sets `state.status = RunStatus.PAUSED`
+2. Sets `state.paused_reason = "await_user_input"`
+3. Sets `state.paused_prompt = question`
+4. Sets `state.paused_tool_call = <the ask_user call>`
+5. Saves a checkpoint
+6. Fires `turn.end` with `reason=AWAIT_USER` (see Spec 10 A.3)
+7. Returns control to the caller with `RunResult.status=PAUSED` and `RunResult.paused_prompt=question`
+
+The caller resumes via:
+
+```python
+result = await agent.resume(thread_id, user_response)
+```
+
+Resume injects the caller's input as the tool result for the paused `ask_user` call, fires `turn.start` with `is_resume=True`, and continues the loop. Full implementation in Spec 02 Section 7.6.
+
+**Hook interaction.** `tool.invoke.before` fires for `ask_user` like any other tool. Operators can `HookBlock` an `ask_user` call (e.g., refuse user prompts in autonomous batch contexts):
+
+```python
+@agent.hooks.hook("tool.invoke.before")
+async def block_ask_user_in_batch(call):
+    if call.tool_name == "ask_user" and is_batch_run():
+        raise HookBlock("ask_user not allowed in autonomous batch runs")
+```
+
+**Constraints.**
+
+- Only one `ask_user` call per model response is honored. Subsequent calls in the same `_phase_act` get a synthetic error result `"ERROR: only one ask_user call permitted per turn"`. Keeps the resume protocol simple: one paused call, one user response.
+- The user response is `str`. If the caller needs to pass structured data, they encode it (JSON, etc.) and the model parses it.
+- No automatic checkpoint TTL. Abandoned paused threads accumulate; caller is responsible for cleanup.
+
+### 5.2 Internal signals
+
+The `YieldToUser` exception type is an *internal* implementation detail of `ask_user`. It is not exported from the package and not raisable by user code. The only legitimate raiser is the `ask_user` tool implementation; the only legitimate catcher is `_phase_act` in the runtime (Spec 02 Section 7.4).
+
+User code that needs to yield the agent must use the `ask_user` tool. There is no public yield API in v1.
+
+---
+
+## 6. MCP Client
 
 Mori includes a native MCP client. No `langchain-mcp-adapters` dependency.
 
@@ -218,7 +295,7 @@ class MCPClient:
 
 **Argument validation:** before sending a tool call to the server, arguments are validated against the cached JSON Schema. Invalid arguments raise `SchemaValidationError` without making a network call.
 
-## 6. CLI Runner
+## 7. CLI Runner
 
 CLI tools are executed as subprocesses via `anyio`. The runner handles argument formatting, environment setup, timeout enforcement, and output capture.
 
@@ -324,7 +401,7 @@ tools.register_cli(
 )
 ```
 
-## 7. Configuration
+## 8. Configuration
 
 ```python
 class ToolRegistryConfig(MoriModel):
@@ -346,7 +423,7 @@ class AuthConfig(MoriModel):
     header_name: str = "Authorization"
 ```
 
-## 8. Integration with Runtime
+## 9. Integration with Runtime
 
 The runtime (Spec 02) uses the ToolRegistry in two places:
 
@@ -358,7 +435,7 @@ When `deferred_schemas=True`, `list_specs()` returns ToolSpecs with `input_schem
 
 After invocation, the result content is truncated to `max_result_tokens` if it exceeds that limit. This prevents a single verbose tool output (e.g., a CLI command dumping a large file) from consuming disproportionate context. Truncation appends `\n[TRUNCATED: output exceeded {max_result_tokens} tokens]` so the model knows data was lost.
 
-## 9. Error Rate Tracking
+## 10. Error Rate Tracking
 
 The registry tracks per-tool metrics:
 
@@ -378,7 +455,7 @@ class ToolMetrics(MoriModel):
 
 These metrics are available via `tools.get_metrics(tool_id)` and are included in observability events.
 
-## 10. Test Criteria
+## 11. Test Criteria
 
 - [ ] A native async function registered via decorator is callable via invoke()
 - [ ] A native sync function registered via register() is callable via invoke()
@@ -407,3 +484,15 @@ These metrics are available via `tools.get_metrics(tool_id)` and are included in
 - [ ] invoke truncates results exceeding max_result_tokens
 - [ ] Truncated results include the TRUNCATED marker
 - [ ] search returns relevant tools by description
+
+**Built-in native tools (`ask_user`):**
+- [ ] `.ask_user()` on the builder registers `ask_user` as a native tool
+- [ ] `.ask_user()` without `.checkpointer(...)` raises `BuilderError` at build time
+- [ ] Calling `ask_user(question)` raises `YieldToUser` internally
+- [ ] `YieldToUser` is not exported from the package (not in `mori.__all__`, not importable via the public path)
+- [ ] When `ask_user` is invoked, `_phase_act` sets `RunStatus.PAUSED`, `paused_prompt`, `paused_tool_call`, saves a checkpoint, and returns cleanly
+- [ ] `RunResult.paused_prompt` matches the `question` argument passed to `ask_user`
+- [ ] `tool.invoke.before` hooks fire for `ask_user` and can block it via `HookBlock`
+- [ ] Only the first `ask_user` call in a model response is honored; subsequent calls get a synthetic error result
+- [ ] `agent.resume(thread_id, response)` injects the response as the paused tool's result and continues the loop
+- [ ] After resume, the model sees the response as a normal tool result message

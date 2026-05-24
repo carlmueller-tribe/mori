@@ -1,7 +1,6 @@
 # Mori Implementation Plan
 
 **Owner:** Carl Mueller
-**Start Date:** April 27, 2026
 **Status:** Planning
 
 ---
@@ -17,10 +16,14 @@ v0.3  "It remembers"    → + memory = context persists across steps
 v0.4  "It learns"       → + skills + budget = procedural reuse with context management
 v0.5  "It's governed"   → + permissions + checkpoints + hooks = production-grade governance
 v0.6  "It's compliant"  → + AIUC-1 guards + evidence = audit-ready
-v0.7  "It ships"        → + Postgres + streaming + docs + PyPI = public release
+v0.7  "It's integrated" → + Postgres + streaming + adapters + Active Hooks + chat mode = feature-complete (internal)
 ```
 
 Each version has one integration test that proves the whole thing works end-to-end.
+
+**Documentation is continuous.** Every public API, builder method, hook event, and lifecycle change is documented in the same change that ships it. Specs in `mori-docs/specs/` are kept current as code lands. There is no dedicated "documentation phase" — docs that lag the code are a regression, treated like a failing test. This applies equally to internal-only releases: documentation quality is the same whether or not the artifact ever leaves this repo.
+
+**Mori is internal.** No PyPI release is planned. The roadmap ends at feature-completeness; distribution decisions happen separately, if at all.
 
 ---
 
@@ -44,7 +47,7 @@ Each version has one integration test that proves the whole thing works end-to-e
 
 ---
 
-## Phase 0: Scaffold (Days 1-2)
+## Phase 0: Scaffold
 
 **Goal:** Repo exists, CI runs, package installs.
 
@@ -60,7 +63,7 @@ Each version has one integration test that proves the whole thing works end-to-e
 
 ---
 
-## v0.1: "It Runs" (Days 3-12)
+## v0.1: "It Runs"
 
 **Goal:** The simplest possible working agent. A model, some Python functions as tools, and a loop that calls them.
 
@@ -78,15 +81,15 @@ result = await agent.run("What is 3 + 5?")
 
 ### Tasks
 
-**Types (Spec 01, partial) — 1 day.** Only what v0.1 needs: identifiers, enums, messages, model types, tool types, core errors.
+**Types (Spec 01, partial).** Only what v0.1 needs: identifiers, enums, messages, model types, tool types, core errors.
 
-**Anthropic Adapter (Spec 02 Sections 10-11) — 2 days.** ModelAdapter protocol. AnthropicAdapter: system message extraction, tool schema conversion, response parsing (text + tool_use blocks), tool_result formatting.
+**Anthropic Adapter (Spec 02 Sections 10-11).** ModelAdapter protocol. AnthropicAdapter: system message extraction, tool schema conversion, response parsing (text + tool_use blocks), tool_result formatting.
 
-**Tool Registry (Spec 05, native only) — 1 day.** register(), @tool() decorator, schema inference, list_specs(), invoke() with validation.
+**Tool Registry (Spec 05, native only).** register(), @tool() decorator, schema inference, list_specs(), invoke() with validation.
 
-**Runtime (Spec 02, minimal) — 3 days.** MoriState, AgentLoop with model + tools. Plan/act/observe/evaluate/update phases. run() while loop. RunResult. Hardcoded step limit of 50.
+**Runtime (Spec 02, minimal).** MoriState, AgentLoop with model + tools. Plan/act/observe/evaluate/update phases. run() while loop. RunResult. Hardcoded step limit of 50.
 
-**Builder (Spec 11, minimal) — 1 day.** Mori.builder(), .model(), .tool(), .build(), Mori.run(task).
+**Builder (Spec 11, minimal).** Mori.builder(), .model(), .tool(), .build(), Mori.run(task).
 
 ### v0.1 Exit Test
 
@@ -96,11 +99,9 @@ result = await agent.run("What is (3 + 5) * 12?")
 assert result.status == "completed" and "96" in result.final_output
 ```
 
-**Effort:** 8 days
-
 ---
 
-## v0.2: "It Sees" (Days 13-22)
+## v0.2: "It Sees"
 
 **Goal:** CLI programs and MCP servers as tools. Structured observability. Resource bounds.
 
@@ -120,15 +121,15 @@ agent = (
 
 ### Tasks
 
-**CLI Runner (Spec 05 Section 6) — 2 days.** register_cli(), CLIRunner subprocess execution, argument formatting (flags/positional/subcommand), timeout, output cap, security.
+**CLI Runner (Spec 05 Section 7).** register_cli(), CLIRunner subprocess execution, argument formatting (flags/positional/subcommand), timeout, output cap, security.
 
-**MCP Client (Spec 05 Section 5) — 3 days.** MCPClient: connect, discover_tools, invoke. SSE + stdio transport. JSON-RPC 2.0. Schema caching with TTL.
+**MCP Client (Spec 05 Section 6).** MCPClient: connect, discover_tools, invoke. SSE + stdio transport. JSON-RPC 2.0. Schema caching with TTL.
 
-**Observability (Spec 08, core) — 2 days.** MoriEvent base. Core events: RunStart/End, StepStart/End, ToolInvoke/Result. ObservabilityEngine. StdoutSink, JsonlSink. Wire into runtime.
+**Observability (Spec 08, core).** MoriEvent base. Core events: RunStart/End, StepStart/End, ToolInvoke/Result. ObservabilityEngine. StdoutSink, JsonlSink. Wire into runtime.
 
-**Control Bounds (Spec 07) — 1 day.** ControlBounds: check_bounds, should_retry. Step/token/timeout/idle limits. Retry backoff.
+**Control Bounds (Spec 07).** ControlBounds: check_bounds, should_retry. Step/token/timeout/idle limits. Retry backoff.
 
-**Error Rate Tracking (Spec 05 Section 9) — 1 day.** ToolMetrics per tool. Wire into invoke(). Include in events.
+**Error Rate Tracking (Spec 05 Section 10).** ToolMetrics per tool. Wire into invoke(). Include in events.
 
 ### v0.2 Exit Test
 
@@ -139,11 +140,9 @@ events = load_jsonl("./traces.jsonl")
 assert any(e["event_type"] == "tool.invoke" for e in events)
 ```
 
-**Effort:** 9 days
-
 ---
 
-## v0.3: "It Remembers" (Days 23-32)
+## v0.3: "It Remembers"
 
 **Goal:** Memory persists across steps. Retrieval enriches context.
 
@@ -161,17 +160,17 @@ result = await agent.run("Research how auth works, then write a guide", thread_i
 
 ### Tasks
 
-**Types (Spec 01, memory types) — 0.5 days.** MemoryRecord, MemorySlice, WriteReceipt, ForgetPolicy, MemoryStats.
+**Types (Spec 01, memory types).** MemoryRecord, MemorySlice, WriteReceipt, ForgetPolicy, MemoryStats.
 
-**Embedder — 1 day.** Embedder protocol. AnthropicEmbedder or OpenAIEmbedder.
+**Embedder.** Embedder protocol. AnthropicEmbedder or OpenAIEmbedder.
 
-**InMemory Backend — 1.5 days.** MemoryBackend protocol. InMemoryBackend: dict + numpy cosine.
+**InMemory Backend.** MemoryBackend protocol. InMemoryBackend: dict + numpy cosine.
 
-**Memory Module (Spec 03) — 3 days.** Full interface: read, write, promote, forget, summarize_layer. Four-layer model. Retrieval pipeline (5 stages). MemoryConfig.
+**Memory Module (Spec 03).** Full interface: read, write, promote, forget, summarize_layer. Four-layer model. Retrieval pipeline (5 stages). MemoryConfig.
 
-**Wire into Runtime — 2 days.** Retrieve phase reads memory. Update phase writes traces. Finalize writes episodic summary. Memory events.
+**Wire into Runtime.** Retrieve phase reads memory. Update phase writes traces. Finalize writes episodic summary. Memory events.
 
-**SQLite Backend — 2 days.** Full MemoryBackend implementation with embedded vector search.
+**SQLite Backend.** Full MemoryBackend implementation with embedded vector search.
 
 ### v0.3 Exit Test
 
@@ -182,11 +181,9 @@ assert stats.records_per_layer[MemoryLayer.WORKING] > 0
 assert stats.records_per_layer[MemoryLayer.EPISODIC] > 0
 ```
 
-**Effort:** 10 days
-
 ---
 
-## v0.4: "It Learns" (Days 33-47)
+## v0.4: "It Learns"
 
 **Goal:** Agent discovers skills and follows procedures. Budget prevents context overload.
 
@@ -206,19 +203,19 @@ result = await agent.run("Fix the failing test in tests/test_auth.py")
 
 ### Tasks
 
-**Types (Spec 01, skill types) — 0.5 days.** SkillManifest, SkillCandidate, SkillPayload, BoundSkill, etc.
+**Types (Spec 01, skill types).** SkillManifest, SkillCandidate, SkillPayload, BoundSkill, etc.
 
-**Skill Artifact Parser — 1.5 days.** Parse manifest.yaml, validate per Spec 04 Section 4.
+**Skill Artifact Parser.** Parse manifest.yaml, validate per Spec 04 Section 4.
 
-**Filesystem Registry — 1 day.** SkillRegistry protocol. FilesystemRegistry: scan, parse, search.
+**Filesystem Registry.** SkillRegistry protocol. FilesystemRegistry: scan, parse, search.
 
-**Skills Module (Spec 04) — 3 days.** discover, load, bind, record_outcome, health. Discovery pipeline. Progressive disclosure. Health tracking.
+**Skills Module (Spec 04).** discover, load, bind, record_outcome, health. Discovery pipeline. Progressive disclosure. Health tracking.
 
-**Budget Manager (Spec 09) — 2 days.** BudgetManager. Rebalancing algorithm. BudgetReport.
+**Budget Manager (Spec 09).** BudgetManager. Rebalancing algorithm. BudgetReport.
 
-**Wire into Runtime — 2 days.** Retrieve phase: skill discovery + memory, both bounded by budget. Plan phase: generation budget. Skill events.
+**Wire into Runtime.** Retrieve phase: skill discovery + memory, both bounded by budget. Plan phase: generation budget. Skill events.
 
-**Example Skills — 1 day.** code-review, bug-fix, test-generation artifacts.
+**Example Skills.** code-review, bug-fix, test-generation artifacts.
 
 ### v0.4 Exit Test
 
@@ -228,11 +225,9 @@ skill_events = [e for e in traces if e["event_type"] == "skill.discover"]
 assert len(skill_events) > 0 and skill_events[0]["top_match"] is not None
 ```
 
-**Effort:** 11 days
-
 ---
 
-## v0.5: "It's Governed" (Days 48-62)
+## v0.5: "It's Governed"
 
 **Goal:** Unix-style permissions. Pause/resume. Custom hooks.
 
@@ -255,13 +250,13 @@ result = await agent.resume(thread_id=result.thread_id, input={"approved": True}
 
 ### Tasks
 
-**Permission Engine (Spec 06) — 5 days.** Identity/group model. Resource/Permission types. PermissionRule with glob patterns. Resolution algorithm (deny-wins). Conditions. Wire into all modules.
+**Permission Engine (Spec 06).** Identity/group model. Resource/Permission types. PermissionRule with glob patterns. Resolution algorithm (deny-wins). Conditions. Wire into all modules.
 
-**Checkpoint Store (Spec 07) — 2 days.** CheckpointStore protocol. InMemory + SQLite. MoriState JSON serialization. Wire into runtime. resume(), get_state(), get_history().
+**Checkpoint Store (Spec 07).** CheckpointStore protocol. InMemory + SQLite. MoriState JSON serialization. Wire into runtime. resume(), get_state(), get_history().
 
-**Hooks (Spec 10 Part A) — 2 days.** HookRegistry. Priority dispatch. Before (chained modification) / after (observe). Timeout. Fail-open.
+**Hooks (Spec 10 Part A).** HookRegistry. Priority dispatch. Before (chained modification) / after (observe). Timeout. Fail-open.
 
-**Integration Wiring — 2 days.** Permission checks everywhere. Checkpoint on escalation. Hooks fire at all lifecycle events.
+**Integration Wiring.** Permission checks everywhere. Checkpoint on escalation. Hooks fire at all lifecycle events.
 
 ### v0.5 Exit Test
 
@@ -271,11 +266,9 @@ perm_events = [e for e in traces if e["event_type"] == "permission.check"]
 assert any(e["decision"] in ("deny", "escalate") for e in perm_events)
 ```
 
-**Effort:** 11 days
-
 ---
 
-## v0.6: "It's Compliant" (Days 63-72)
+## v0.6: "It's Compliant"
 
 **Goal:** AIUC-1 guards active. PII redacted. Evidence exportable.
 
@@ -297,13 +290,13 @@ evidence = await EvidenceExporter(agent.risk_taxonomy).export_run(result.run_id,
 
 ### Tasks
 
-**Risk Taxonomy (Spec 12 Section 3.1) — 1 day.** Models, YAML loader, wire into Permission + Observability.
+**Risk Taxonomy (Spec 12 Section 3.1).** Models, YAML loader, wire into Permission + Observability.
 
-**Guards (Spec 12 Section 3.2) — 3 days.** PIIGuard, IPGuard, InputFilterGuard, OutputScopeGuard. Default patterns. .guard() builder method (priority 1 hooks). RiskFlag on events.
+**Guards (Spec 12 Section 3.2).** PIIGuard, IPGuard, InputFilterGuard, OutputScopeGuard. Default patterns. .guard() builder method (priority 1 hooks). RiskFlag on events.
 
-**Evidence Exporter (Spec 12 Section 3.3) — 2 days.** EvidenceExporter. EvidencePackage. ComplianceSummary. AIUC-1 requirement mapping.
+**Evidence Exporter (Spec 12 Section 3.3).** EvidenceExporter. EvidencePackage. ComplianceSummary. AIUC-1 requirement mapping.
 
-**Integration — 1 day.** Guards fire on every call. Risk flags flow. Evidence exports from real traces.
+**Integration.** Guards fire on every call. Risk flags flow. Evidence exports from real traces.
 
 ### v0.6 Exit Test
 
@@ -316,51 +309,69 @@ flagged = [e for e in traces if e.get("risk_flags")]
 assert len(flagged) > 0
 ```
 
-**Effort:** 7 days
-
 ---
 
-## v0.7: "It Ships" (Days 73-90)
+## v0.7: "It's Integrated"
 
-**Goal:** Production backends, streaming, OpenAI support, LangGraph adapter, docs, PyPI.
+**Goal:** Production backends, streaming, framework adapters, observability sinks, Active Hooks (block/retry/turn events), and chat mode via `ask_user`. Feature-complete for internal use. No public release.
 
 ### Tasks
 
-**OpenAI Adapter (Spec 02 Section 12) — 1 day**
-**Postgres Backends (Spec 03, 07) — 3 days**
-**Streaming (Spec 02 Section 8) — 2 days**
-**YAML Config (Spec 11 Section 5) — 1 day**
-**OTLP Sink (Spec 08 Section 6) — 1 day**
-**LangGraph Adapter (Spec 10 Part B) — 3 days**
-**Documentation — 3 days**
-**PyPI Release — 1 day**
+**OpenAI Adapter (Spec 02 Section 12).** OpenAI ModelAdapter implementation: tool calls, tool results, streaming.
+
+**Postgres Backends (Spec 03, 07).** Production MemoryBackend and CheckpointStore on Postgres + pgvector.
+
+**Streaming (Spec 02 Section 8).** `agent.stream()` yields typed events at every phase boundary and tool call.
+
+**YAML Config (Spec 11 Section 5).** `Mori.from_config("./mori.yaml")` builder entry point.
+
+**OTLP Sink (Spec 08 Section 6).** Observability sink emitting OpenTelemetry-compatible traces.
+
+**LangGraph Adapter (Spec 10 Part B).** RuntimeAdapter implementation; `langgraph_as_tool` / `langgraph_as_skill` wrappers.
+
+**Active Hooks (Spec 10 Part A).** `HookBlock` / `HookRetry` exceptions. `turn.start` / `turn.end` events. Capability matrix per event (observe / transform / block / retry). Runtime translation table in `_phase_plan` / `_phase_act` / `_phase_evaluate`. `HookPolicyEvent` on observability stream.
+
+**Chat Mode via `ask_user` (Spec 05 Section 5).** Native `ask_user(question)` tool. `YieldToUser` internal signal caught in `_phase_act`. Pause path: `RunStatus.PAUSED` + `paused_prompt` + checkpoint save. `resume(thread_id, input)` injects user response as tool result for paused call. `.ask_user()` builder method (opt-in; requires checkpointer).
 
 ### v0.7 Exit Test
 
 ```python
 agent = Mori.from_config("./mori.yaml")
+
+# Streaming end-to-end
 async for event in agent.stream("Analyze Q3 sales data"):
     print(f"{event.type}: {event.data}")
-```
 
-**Effort:** 15 days
+# Active Hooks: a HookBlock prevents a forbidden tool call
+@agent.hooks.hook("tool.invoke.before")
+async def block_prod(call):
+    if call.tool_name == "apply_migration" and call.args.get("env") == "prod":
+        raise HookBlock("production migrations must go through CI")
+
+# Chat mode: agent yields, caller resumes
+result = await agent.run("Plan the user-table migration")
+if result.status == RunStatus.PAUSED:
+    answer = input(result.paused_prompt + " ")
+    result = await agent.resume(result.thread_id, answer)
+assert result.status == RunStatus.COMPLETED
+```
 
 ---
 
-## Timeline
+## Milestone Demos
 
-| Version | Days | Calendar | What You Demo |
-|---------|------|----------|---------------|
-| Phase 0 | 1-2 | Apr 27-28 | "Repo is live" |
-| v0.1 | 3-12 | Apr 29 - May 12 | "Watch it call tools and solve a problem" |
-| v0.2 | 13-22 | May 13 - May 26 | "It runs shell commands and MCP tools. Here are the traces." |
-| v0.3 | 23-32 | May 27 - Jun 9 | "It remembers what it learned across steps" |
-| v0.4 | 33-47 | Jun 10 - Jun 27 | "It found a skill file and followed the procedure" |
-| v0.5 | 48-62 | Jun 30 - Jul 18 | "It can't touch deploy. It paused for approval. I resumed it." |
-| v0.6 | 63-72 | Jul 21 - Aug 1 | "It redacted the SSN. Here's the AIUC-1 evidence package." |
-| v0.7 | 73-90 | Aug 4 - Aug 28 | "`pip install mori`. Try it." |
+What each milestone visibly demonstrates when complete:
 
-**Total:** 90 working days (~18 weeks) to v0.1.0 on PyPI.
+| Version | What You Demo |
+|---------|---------------|
+| Phase 0 | "Repo is live" |
+| v0.1 | "Watch it call tools and solve a problem" |
+| v0.2 | "It runs shell commands and MCP tools. Here are the traces." |
+| v0.3 | "It remembers what it learned across steps" |
+| v0.4 | "It found a skill file and followed the procedure" |
+| v0.5 | "It can't touch deploy. It paused for approval. I resumed it." |
+| v0.6 | "It redacted the SSN. Here's the AIUC-1 evidence package." |
+| v0.7 | "Feature-complete agent runtime: streaming, Postgres, LangGraph, chat mode, Active Hooks." |
 
 ## Parallelization
 
@@ -373,6 +384,4 @@ Each version is sequential, but within a version:
 | v0.4 | Skills Module ‖ Budget Manager |
 | v0.5 | Permission ‖ Checkpoints ‖ Hooks |
 | v0.6 | Guards ‖ Evidence Exporter |
-| v0.7 | Postgres ‖ Streaming ‖ OpenAI ‖ LangGraph ‖ Docs |
-
-With 2 engineers: ~60 days. With 3: ~45 days.
+| v0.7 | Postgres ‖ Streaming ‖ OpenAI ‖ LangGraph ‖ Active Hooks ‖ Chat Mode |
