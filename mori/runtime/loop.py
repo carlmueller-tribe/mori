@@ -452,6 +452,8 @@ class AgentLoop:
         self, task: str, thread_id: ThreadId | None = None, context: dict[str, Any] | None = None
     ) -> RunResult:  # noqa: E501
         state = self._init_state(task, thread_id, context)
+        if self._hooks is not None:
+            self._hooks.set_current_run_id(state.run_id)
         if self._runtime is not None:
             from mori.observability.events import RunEndEvent, RunStartEvent
 
@@ -478,6 +480,8 @@ class AgentLoop:
                     duration_ms=(time.monotonic() - start_time) * 1000,
                 )
             )
+            if self._hooks is not None:
+                self._hooks.set_current_run_id(None)
             return result
         if self._hooks:
             try:
@@ -505,6 +509,7 @@ class AgentLoop:
                         "block_hook_id": block.hook_id,
                     }
                 )
+                self._hooks.set_current_run_id(None)
                 return result
         return await self._run_from_state(state)
 
@@ -515,6 +520,8 @@ class AgentLoop:
         if cp is None:
             raise ValueError(f"No checkpoint found for thread {thread_id}")
         state = cp.restore()
+        if self._hooks is not None:
+            self._hooks.set_current_run_id(state.run_id)
         if state.status != RunStatus.PAUSED:
             raise ValueError(
                 f"Cannot resume thread {thread_id}: checkpoint has status '{state.status.value}', expected 'paused'"  # noqa: E501
@@ -565,6 +572,7 @@ class AgentLoop:
                         "block_hook_id": block.hook_id,
                     }
                 )
+                self._hooks.set_current_run_id(None)
                 return result
         return await self._run_from_state(state)
 
@@ -796,6 +804,8 @@ class AgentLoop:
         # If a cancellation slipped through the inner loop, the closing
         # boundary events have now fired — re-raise so the caller sees
         # the cancellation as cancellation, not as a FAILED RunResult.
+        if self._hooks is not None:
+            self._hooks.set_current_run_id(None)
         if state.context.pop("_reraise_cancelled", False):
             raise asyncio.CancelledError()
         return run_result

@@ -105,3 +105,46 @@ async def test_dispatch_before_emits_hook_policy_event_on_retry() -> None:
     assert policy_events[0].event_name == "model.request.before"
     assert policy_events[0].handler_name == "retrier"
     assert policy_events[0].reason == "retry feedback for test"
+
+
+@pytest.mark.asyncio
+async def test_set_current_run_id_propagates_to_policy_event() -> None:
+    """set_current_run_id() value must appear in emitted HookPolicyEvent.run_id."""
+    obs = AsyncMock(spec=ObservabilityEngine)
+    registry = HookRegistry(observability=obs)
+
+    @registry.hook("tool.invoke.before", priority=10, name="blocker_with_run_id")
+    async def blocker(payload):
+        raise HookBlock("blocked with run id")
+
+    registry.set_current_run_id("run_test_abc123")
+
+    with pytest.raises(HookBlock):
+        await registry.dispatch_before("tool.invoke.before", payload={"tool": "foo"})
+
+    emit_calls = [c.args[0] for c in obs.emit.call_args_list]
+    policy_events = [e for e in emit_calls if isinstance(e, HookPolicyEvent)]
+    assert len(policy_events) == 1
+    assert policy_events[0].run_id == "run_test_abc123"
+
+
+@pytest.mark.asyncio
+async def test_set_current_run_id_none_falls_back_to_unknown() -> None:
+    """When current_run_id is None and no run_id on signal, 'unknown' is used."""
+    obs = AsyncMock(spec=ObservabilityEngine)
+    registry = HookRegistry(observability=obs)
+
+    @registry.hook("tool.invoke.before", priority=10, name="blocker_no_run_id")
+    async def blocker(payload):
+        raise HookBlock("blocked without run id")
+
+    # current_run_id is None by default
+    assert registry._current_run_id is None
+
+    with pytest.raises(HookBlock):
+        await registry.dispatch_before("tool.invoke.before", payload={"tool": "foo"})
+
+    emit_calls = [c.args[0] for c in obs.emit.call_args_list]
+    policy_events = [e for e in emit_calls if isinstance(e, HookPolicyEvent)]
+    assert len(policy_events) == 1
+    assert policy_events[0].run_id == "unknown"

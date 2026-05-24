@@ -28,6 +28,14 @@ class HookRegistry:
         # event_name -> [(priority, hook_id, handler)]
         self._hooks: dict[str, list[tuple[int, str, HookHandler]]] = {}
         self._registrations: dict[str, HookRegistration] = {}
+        self._current_run_id: str | None = None
+
+    def set_current_run_id(self, run_id: str | None) -> None:
+        """Set the run_id to be stamped on emitted HookPolicyEvents.
+
+        Called by the runtime at the start of each run; cleared at end.
+        """
+        self._current_run_id = run_id
 
     def register(
         self,
@@ -120,7 +128,7 @@ class HookRegistry:
                     event = HookPolicyEvent(
                         event_id=f"evt_{secrets.token_hex(6)}",
                         timestamp=datetime.now(UTC),
-                        run_id=getattr(policy_signal, "run_id", None) or "unknown",
+                        run_id=self._current_run_id or getattr(policy_signal, "run_id", None) or "unknown",
                         signal=type(policy_signal).__name__,
                         event_name=event_name,
                         hook_id=hook_id,
