@@ -226,7 +226,7 @@ agent = (
 3. Sets `state.paused_prompt = question`
 4. Sets `state.paused_tool_call = <the ask_user call>`
 5. Saves a checkpoint
-6. Fires `turn.end` with `reason=AWAIT_USER` (see Spec 10 A.3)
+6. Fires `turn.end` with `reason=PAUSED_AWAIT_USER` (see Spec 10 A.3)
 7. Returns control to the caller with `RunResult.status=PAUSED` and `RunResult.paused_prompt=question`
 
 The caller resumes via:

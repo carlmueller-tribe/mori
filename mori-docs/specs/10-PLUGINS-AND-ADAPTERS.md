@@ -110,11 +110,11 @@ class TurnEndPayload(MoriModel):
     reason: TurnEndReason
     state: MoriState                 # read-only
     result: RunResult                # what's about to be returned to caller
-    paused_prompt: str | None        # set when reason=AWAIT_USER
+    paused_prompt: str | None        # set when reason=PAUSED_AWAIT_USER
 
 class TurnEndReason(StrEnum):
     COMPLETED = "completed"                # agent finished naturally
-    AWAIT_USER = "await_user"              # ask_user tool invoked
+    PAUSED_AWAIT_USER = "paused_await_user"      # ask_user tool invoked
     PAUSED_ESCALATE = "paused_escalate"    # PermissionEngine ESCALATE
     EXHAUSTED = "exhausted"                # max_steps reached
     ERRORED = "errored"                    # uncaught exception in loop
@@ -299,7 +299,7 @@ async def block_destructive_inputs(payload: TurnStartPayload) -> None:
 `ask_user` (Spec 05 Section 5.1) is the native tool that yields the agent to the caller for input. The hook surface around chat mode is:
 
 - **`turn.start`** fires on both `run(task)` and `resume(thread_id, user_response)`. Distinguish via `payload.is_resume`.
-- **`turn.end`** fires with `reason=AWAIT_USER` when the agent invokes `ask_user`. `payload.paused_prompt` holds the question.
+- **`turn.end`** fires with `reason=PAUSED_AWAIT_USER` when the agent invokes `ask_user`. `payload.paused_prompt` holds the question.
 - **`tool.invoke.before`** fires for `ask_user` like any other tool. Operators can raise `HookBlock` to refuse `ask_user` in autonomous contexts.
 
 See Spec 05 for the pause/resume lifecycle. The diagram below shows where the events fire:
@@ -312,7 +312,7 @@ agent.run("plan the migration")
   ├─ tool.invoke.before fires (can block here)
   ├─ ask_user raises YieldToUser internally
   ├─ state.status = PAUSED, checkpoint saved
-  ├─ turn.end (reason=AWAIT_USER, paused_prompt="which db?")
+  ├─ turn.end (reason=PAUSED_AWAIT_USER, paused_prompt="which db?")
   └─ returns RunResult(status=PAUSED, paused_prompt="which db?")
 
 agent.resume(thread_id, "prod-replica-1")
@@ -410,7 +410,7 @@ Per `12-AIUC1-COMPLIANCE.md` Section 2.9:
 - [ ] `turn.start` fires once at `run(task)` entry with `is_resume=False`
 - [ ] `turn.start` fires once at `resume(thread_id, input)` entry with `is_resume=True` and the prior `paused_tool_call` populated
 - [ ] `turn.end` fires exactly once per `run()` or `resume()` call regardless of exit reason
-- [ ] `turn.end.reason` correctly identifies COMPLETED / AWAIT_USER / PAUSED_ESCALATE / EXHAUSTED / ERRORED / BLOCKED
+- [ ] `turn.end.reason` correctly identifies COMPLETED / PAUSED_AWAIT_USER / PAUSED_ESCALATE / EXHAUSTED / ERRORED / BLOCKED
 
 **Adapters:**
 - [ ] RuntimeAdapter protocol is implementable by a third party

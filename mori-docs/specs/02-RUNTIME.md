@@ -154,7 +154,7 @@ async def _finalize_turn(self, state: MoriState, reason: TurnEndReason) -> RunRe
     payload = TurnEndPayload(
         thread_id=state.thread_id, run_id=state.run_id, reason=reason,
         state=state, result=result,
-        paused_prompt=state.paused_prompt if reason == TurnEndReason.AWAIT_USER else None,
+        paused_prompt=state.paused_prompt if reason == TurnEndReason.PAUSED_AWAIT_USER else None,
     )
     try:
         payload = await self.hooks.dispatch_before(HookEvents.TURN_END, payload)
