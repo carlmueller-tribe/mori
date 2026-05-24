@@ -185,7 +185,7 @@ Inference uses `inspect.signature` + type annotation mapping. Pydantic models as
 
 ## 5. Built-in Native Tools
 
-Mori ships a small set of built-in native tools that the agent can use to interact with its runtime environment. They are registered automatically by the builder when enabled. Each is opt-in — autonomous agents (the default) should not be able to invoke them by default.
+Mori ships a small set of built-in native tools that the agent can use to interact with its runtime environment. They are auto-registered by the builder. Each can be disabled via `.disable_native_tool(name)` — autonomous batch agents that must not interact with humans should disable `ask_user` explicitly.
 
 ### 5.1 `ask_user`
 
@@ -205,19 +205,21 @@ async def ask_user(question: str) -> str:
     """
 ```
 
-**Enabling.** Disabled by default. Opt-in via the builder:
+**Enabling.** Auto-registered by the builder. To disable (e.g., for autonomous batch agents that should not be able to ask the user), opt out explicitly:
 
 ```python
 agent = (
     Mori.builder()
     .model("anthropic", model="claude-sonnet-4-6")
     .checkpointer(SqliteCheckpointer(path="./threads.db"))
-    .ask_user()                  # enable chat mode
+    .disable_native_tool("ask_user")    # opt out of chat mode
     .build()
 )
 ```
 
-**Requires checkpointer.** Calling `.ask_user()` on a builder without `.checkpointer(...)` raises `BuilderError("ask_user requires a checkpointer; call .checkpointer() first")` at build time. The pause must persist somewhere for `resume()` to work.
+`ask_user` is the only built-in native tool today. The `disable_native_tool(name)` builder method also accepts future native tool names.
+
+**Requires checkpointer.** When `ask_user` is enabled (the default), `.build()` requires a checkpointer to have been configured. If `.checkpointer(...)` was not called, build raises `BuilderError("ask_user requires a checkpointer; call .checkpointer() before .build(), or .disable_native_tool('ask_user')")`. The pause must persist somewhere for `resume()` to work.
 
 **Pause/resume lifecycle.** When the agent calls `ask_user`, the tool raises the internal `YieldToUser` signal (not exported; see Spec 02 Section 7.4). The runtime catches it and:
 
@@ -486,8 +488,9 @@ These metrics are available via `tools.get_metrics(tool_id)` and are included in
 - [ ] search returns relevant tools by description
 
 **Built-in native tools (`ask_user`):**
-- [ ] `.ask_user()` on the builder registers `ask_user` as a native tool
-- [ ] `.ask_user()` without `.checkpointer(...)` raises `BuilderError` at build time
+- [ ] The builder auto-registers `ask_user` as a native tool by default
+- [ ] `.disable_native_tool("ask_user")` removes it from the native tool set
+- [ ] `.build()` without a checkpointer raises `BuilderError` when `ask_user` is enabled (the default)
 - [ ] Calling `ask_user(question)` raises `YieldToUser` internally
 - [ ] `YieldToUser` is not exported from the package (not in `mori.__all__`, not importable via the public path)
 - [ ] When `ask_user` is invoked, `_phase_act` sets `RunStatus.PAUSED`, `paused_prompt`, `paused_tool_call`, saves a checkpoint, and returns cleanly

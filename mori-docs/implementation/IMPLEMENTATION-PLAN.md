@@ -331,7 +331,7 @@ assert len(flagged) > 0
 
 **Active Hooks (Spec 10 Part A).** `HookBlock` / `HookRetry` exceptions. `turn.start` / `turn.end` events. Capability matrix per event (observe / transform / block / retry). Runtime translation table in `_phase_plan` / `_phase_act` / `_phase_evaluate`. `HookPolicyEvent` on observability stream.
 
-**Chat Mode via `ask_user` (Spec 05 Section 5).** Native `ask_user(question)` tool. `YieldToUser` internal signal caught in `_phase_act`. Pause path: `RunStatus.PAUSED` + `paused_prompt` + checkpoint save. `resume(thread_id, input)` injects user response as tool result for paused call. `.ask_user()` builder method (opt-in; requires checkpointer).
+**Chat Mode via `ask_user` (Spec 05 Section 5).** Native `ask_user(question)` tool. `YieldToUser` internal signal caught in `_phase_act`. Pause path: `RunStatus.PAUSED` + `paused_prompt` + checkpoint save. `resume(thread_id, input)` injects user response as tool result for paused call. auto-registration via _NATIVE_TOOLS; disable_native_tool("ask_user") for opt-out; build-time check that checkpointer is configured.
 
 ### v0.7 Exit Test
 

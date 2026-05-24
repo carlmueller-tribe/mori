@@ -403,7 +403,7 @@ async def resume(self, thread_id: ThreadId, input: str | dict) -> RunResult:
 
 - `resume(thread_id, ...)` on a thread whose latest checkpoint has `status != PAUSED` raises `RuntimeError` with a clear message. Callers must check `result.status == PAUSED` before calling resume.
 - If `turn.start` raises `HookBlock` on resume, the run ends `BLOCKED` and the paused `ask_user` call remains in the checkpoint — caller can resume again later with different input.
-- The `ask_user` tool requires `checkpointer` configured. The builder enforces this at build time (`.ask_user()` without `.checkpointer(...)` raises `BuilderError`).
+- The `ask_user` tool (auto-registered by default) requires `checkpointer` configured. The builder enforces this at build time (`.build()` without `.checkpointer(...)` raises `BuilderError` when `ask_user` is enabled).
 
 ## 8. Streaming
 
@@ -665,7 +665,7 @@ class OpenAIAdapter(ModelAdapter):
 - [ ] `ask_user` tool yields the agent: `RunStatus=PAUSED`, `paused_prompt` set, checkpoint saved
 - [ ] `resume(thread_id, user_response)` injects the response as the paused tool result and continues
 - [ ] `resume()` on a non-paused thread raises `RuntimeError` with a clear message
-- [ ] `.ask_user()` on a builder without `.checkpointer()` raises `BuilderError` at build time
+- [ ] `.build()` without `.checkpointer()` raises `BuilderError` when `ask_user` is enabled (the default)
 - [ ] `tool.invoke.before` fires for `ask_user` like any other tool (operator can block it)
 - [ ] All modules are optional: model + tools alone produces a working ReAct loop
 - [ ] stream() yields events at every phase boundary
