@@ -316,14 +316,12 @@ class MoriBuilder:
             else:
                 raise ValueError(f"Unknown checkpointer type: {ctype}")
 
-        # 9. Hooks
-        hook_registry = None
-        if self._hook_handlers:
-            from mori.hooks.registry import HookRegistry
+        # 9. Hooks — always create registry so agent.hooks is usable post-build
+        from mori.hooks.registry import HookRegistry
 
-            hook_registry = HookRegistry(observability=obs)
-            for event_name, handler, priority in self._hook_handlers:
-                hook_registry.register(event_name, handler, priority=priority)
+        hook_registry = HookRegistry(observability=obs)
+        for event_name, handler, priority in self._hook_handlers:
+            hook_registry.register(event_name, handler, priority=priority)
 
         # 10. Agent loop
         loop = AgentLoop(
