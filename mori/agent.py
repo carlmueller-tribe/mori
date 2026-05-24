@@ -202,6 +202,14 @@ class MoriBuilder:
         if self._model_adapter is None:
             raise ValueError("A model must be configured. Call .model() before .build()")
 
+        # Spec-required guard: ask_user requires a checkpointer to pause/resume.
+        ask_user_enabled = "ask_user" not in self._disabled_native_tools
+        if ask_user_enabled and self._checkpointer_config is None:
+            raise ValueError(
+                "ask_user requires a checkpointer; call .checkpointer() before .build(), "
+                "or .disable_native_tool('ask_user') to opt out."
+            )
+
         # 1. Observability
         obs: ObservabilityEngine | None = None
         if self._sinks:

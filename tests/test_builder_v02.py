@@ -47,7 +47,13 @@ def test_builder_multiple_cli():
 def test_builder_sink_stdout():
     with patch("mori.agent.AnthropicAdapter") as MockAdapter:
         MockAdapter.return_value = AsyncMock()
-        agent = Mori.builder().model("anthropic", api_key="test").sink("stdout").build()
+        agent = (
+            Mori.builder()
+            .model("anthropic", api_key="test")
+            .disable_native_tool("ask_user")
+            .sink("stdout")
+            .build()
+        )
         assert agent._obs is not None
 
 
@@ -55,7 +61,13 @@ def test_builder_sink_jsonl(tmp_path):
     path = str(tmp_path / "traces.jsonl")
     with patch("mori.agent.AnthropicAdapter") as MockAdapter:
         MockAdapter.return_value = AsyncMock()
-        agent = Mori.builder().model("anthropic", api_key="test").sink("jsonl", path=path).build()
+        agent = (
+            Mori.builder()
+            .model("anthropic", api_key="test")
+            .disable_native_tool("ask_user")
+            .sink("jsonl", path=path)
+            .build()
+        )
         assert agent._obs is not None
 
 
@@ -65,6 +77,7 @@ def test_builder_config_feeds_control():
         agent = (
             Mori.builder()
             .model("anthropic", api_key="test")
+            .disable_native_tool("ask_user")
             .config(max_steps=10, idle_timeout_sec=60)
             .build()
         )
@@ -84,6 +97,7 @@ async def test_builder_full_run_with_cli():
             .cli("echo", command="echo", description="Echo", args_format="positional")
             .sink("stdout")
             .config(max_steps=5)
+            .checkpointer("inmemory")
             .build()
         )
         result = await agent.run("say hello")

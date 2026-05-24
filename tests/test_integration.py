@@ -66,6 +66,7 @@ async def test_v01_exit_test():
             .model("anthropic", model="claude-sonnet-4-20250514", api_key="test")
             .tool(add, description="Add two numbers")
             .tool(multiply, description="Multiply two numbers")
+            .checkpointer("inmemory")
             .build()
         )
         result = await agent.run("What is (3 + 5) * 12?")
@@ -83,7 +84,7 @@ async def test_v01_simple_no_tools():
         mock_adapter.invoke = AsyncMock(return_value=_text_response("Hello! How can I help?"))
         MockAdapter.return_value = mock_adapter
 
-        agent = Mori.builder().model("anthropic", api_key="test").build()
+        agent = Mori.builder().model("anthropic", api_key="test").checkpointer("inmemory").build()
         result = await agent.run("Hello")
 
         assert result.status == RunStatus.COMPLETED
@@ -107,6 +108,7 @@ async def test_v01_step_limit_enforced():
             .model("anthropic", api_key="test")
             .tool(noop, description="Does nothing")
             .config(max_steps=5)
+            .checkpointer("inmemory")
             .build()
         )
         result = await agent.run("Loop forever")

@@ -48,6 +48,7 @@ async def test_hook_block_prevents_tool_call_live(sandbox_read_file, tmp_path):
         Mori.builder()
         .model("anthropic", model="claude-haiku-4-5-20251001")
         .tool(wrapped_read, description="Read a file by path")
+        .checkpointer("inmemory")
         .build()
     )
 
@@ -121,6 +122,7 @@ async def test_turn_start_context_injection_live():
     agent = (
         Mori.builder()
         .model("anthropic", model="claude-haiku-4-5-20251001")
+        .checkpointer("inmemory")
         .build()
     )
 

@@ -131,6 +131,7 @@ async def test_exit_test_skill_discover_and_budget_rebalance(skills_root):
             .skill_registry(str(skills_root))
             .budget(total_context_tokens=200_000)
             .sink("stdout")
+            .checkpointer("inmemory")
             .build()
         )
         # Inject our trace sink directly

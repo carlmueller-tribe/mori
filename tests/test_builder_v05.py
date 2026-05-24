@@ -26,6 +26,7 @@ def test_builder_identity():
                     id="agent:bot", name="bot", type=IdentityType.AGENT, groups=["engineering"]
                 )
             )
+            .disable_native_tool("ask_user")
             .build()
         )
         assert agent.identity is not None
@@ -74,7 +75,13 @@ def test_builder_policy_file(tmp_path):
     )
     with patch("mori.agent.AnthropicAdapter") as M:
         M.return_value = AsyncMock()
-        agent = Mori.builder().model("anthropic", api_key="test").policy_file(str(policy)).build()
+        agent = (
+            Mori.builder()
+            .model("anthropic", api_key="test")
+            .policy_file(str(policy))
+            .disable_native_tool("ask_user")
+            .build()
+        )
         assert agent.permission is not None
 
 
@@ -86,6 +93,7 @@ def test_builder_hook():
             Mori.builder()
             .model("anthropic", api_key="test")
             .hook("run.end", lambda p: fired.append("end"))
+            .disable_native_tool("ask_user")
             .build()
         )
         assert agent.hooks is not None
