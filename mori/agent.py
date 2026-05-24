@@ -321,7 +321,7 @@ class MoriBuilder:
         if self._hook_handlers:
             from mori.hooks.registry import HookRegistry
 
-            hook_registry = HookRegistry()
+            hook_registry = HookRegistry(observability=obs)
             for event_name, handler, priority in self._hook_handlers:
                 hook_registry.register(event_name, handler, priority=priority)
 
