@@ -481,10 +481,20 @@ class AgentLoop:
             return result
         if self._hooks:
             try:
-                await self._hooks.dispatch_before(
+                payload = await self._hooks.dispatch_before(
                     HookEvents.TURN_START,
                     TurnStartPayload(input=task, thread_id=state.thread_id, is_resume=False),
                 )
+                if payload is not None and payload.input != task:
+                    task = payload.input
+                    state.task = task
+                    # The initial user message was set in _init_state with the
+                    # pre-mutation task; update it so the model sees the
+                    # mutated input.
+                    if state.messages and state.messages[0].role == "user":
+                        state.messages[0] = state.messages[0].model_copy(
+                            update={"content": task}
+                        )
             except HookBlock as block:
                 state.status = RunStatus.BLOCKED
                 await self._fire_turn_end(state)
@@ -534,10 +544,17 @@ class AgentLoop:
 
         if self._hooks:
             try:
-                await self._hooks.dispatch_before(
+                payload = await self._hooks.dispatch_before(
                     HookEvents.TURN_START,
                     TurnStartPayload(input=user_text, thread_id=thread_id, is_resume=True),
                 )
+                if payload is not None and payload.input != user_text:
+                    # Mutation: append a system message with the injected content
+                    # so the model sees the change without rewriting the paused
+                    # tool-result message that resume just appended.
+                    state.messages.append(
+                        Message(role="system", content=payload.input)
+                    )
             except HookBlock as block:
                 state.status = RunStatus.BLOCKED
                 await self._fire_turn_end(state)
