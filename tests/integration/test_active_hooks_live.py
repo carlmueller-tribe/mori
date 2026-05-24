@@ -110,3 +110,24 @@ async def test_ask_user_round_trip_live(tmp_path):
         word in final
         for word in ("prod", "staging", "production", "back up", "backup", "database")
     ), f"Final output doesn't reference the chosen DB: {result.final_output!r}"
+
+
+async def test_turn_start_context_injection_live():
+    """A turn.start hook prepends a system note; model acknowledges it."""
+    agent = (
+        Mori.builder()
+        .model("anthropic", model="claude-haiku-4-5-20251001")
+        .build()
+    )
+
+    @agent.hooks.hook(HookEvents.TURN_START)
+    async def inject_marker(payload):
+        payload.input = f"[INTERNAL MARKER: SECRET-CANARY-9381]\n\n{payload.input}"
+        return payload
+
+    result = await agent.run(
+        "Tell me what marker code you see in this conversation, if any. Just echo the code."
+    )
+
+    assert result.status == RunStatus.COMPLETED
+    assert "SECRET-CANARY-9381" in (result.final_output or "")
