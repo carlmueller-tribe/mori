@@ -47,6 +47,7 @@ class HookConfig(MoriModel):
     fail_open: bool = True          # Hook failures don't block operations
     log_hook_errors: bool = True
     log_hook_execution: bool = False
+    max_retry_limit: int = 3        # HookRetry attempts per turn before giving up
 
 HookHandler = Callable[[Any], Any] | Callable[[Any], Awaitable[Any]]
 
@@ -231,7 +232,7 @@ Sinks must log this event prominently — policy decisions changing run outcomes
 
 - **Multiple `HookBlock`s on the same event** is impossible — the first one short-circuits. The hook with the lowest priority value wins.
 - **`HookBlock` at `turn.end`** can fire even after a successful run. This is intentional — it's the "fail the result before returning" use case (e.g., output contains PII).
-- **`HookRetry` infinite loops** are bounded by `max_steps` like any other loop iteration. No separate retry counter.
+- **`HookRetry` retry limit.** `HookConfig.max_retry_limit` (default 3) caps how many times the same event can re-raise `HookRetry` within a single turn. Exceeding the limit causes the run to fail with `RunStatus.FAILED` and `error="hook_retry_exhausted"`. Also bounded by `max_steps` overall.
 - **A hook that times out** (`asyncio.TimeoutError`) is *not* treated as a block — silent failure to enforce, but visible in logs. Users who want timeout to be fatal set `fail_open=False`.
 
 ---
