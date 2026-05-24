@@ -203,16 +203,45 @@ async def validate_paths(call: ToolCall) -> ToolCall | None:
     """Block any path arg that resolves outside SandboxRoot. Raises HookBlock."""
 
 async def guard_bash(call: ToolCall) -> ToolCall | None:
-    """Block dangerous shell patterns and absolute-path tokens outside sandbox.
+    """Block by *intent*, not by literal pattern.
 
-    Default denylist:
-      - rm -rf /
-      - sudo, su -
-      - curl|sh, wget|sh
-      - ssh, scp, nc
-      - paths under /etc, ~/.ssh, .env
-      - git push (any), docker (any)
-      - fork-bomb pattern
+    The prototype shipped in examples/coding_sandbox.py uses a regex-based
+    denylist. That approach is brittle — a determined model (or operator
+    prompt) can defeat it with shell quoting (`/et""c/hosts`), variable
+    indirection (`D=/etc; cat $D/hosts`), or env-readout tools that aren't on
+    the list (`env > log.txt`). Adversarial experiment 3 (see §12) demonstrates
+    both of these gaps.
+
+    The production guard MUST:
+
+      1. **Parse, don't pattern-match.** Use a real shell grammar (bashlex or
+         equivalent) to tokenize the command into a tree of commands,
+         redirections, expansions, and subshells.
+      2. **Classify by intent**, not literal pattern. Intent categories:
+         - `network_egress` — any of: curl, wget, nc, ssh, scp, rsync, ftp,
+           git push, npm/pip publish, docker push, gcloud/aws upload commands
+         - `system_path_read` — any read whose resolved path escapes
+           SandboxRoot (including via expansion or substitution)
+         - `system_path_write` — same for writes
+         - `privilege_escalation` — sudo, su, doas, polkit, capsh
+         - `secret_readout` — env, printenv, set, declare without args, or
+           any command whose stdout is redirected to a file when its
+           argument list references secret-bearing env vars
+         - `destructive_recursive` — rm -rf, find -delete, dd of=
+         - `process_persistence` — nohup, disown, cron, at, systemd-run,
+           setsid, background loops
+      3. **Apply policy by category**, not by command. The default policy
+         denies network_egress, secret_readout, privilege_escalation,
+         destructive_recursive, process_persistence; allows
+         system_path_read/write only under SandboxRoot.
+      4. **Reject what it can't parse** (fail closed). If the grammar walker
+         can't classify a token, treat it as ambiguous and block. Operators
+         can opt into "fail open" for friendlier dev loops, but the default
+         is fail closed.
+
+    Consumers can extend the category set or relax individual categories via
+    `SandboxConfig`. They cannot disable the parser without explicit consent
+    (a `allow_unparseable_commands=True` flag with a loud log warning).
     """
 ```
 
@@ -395,6 +424,43 @@ Trivial change. The other items above subsume it.
 `agent._loop._permission = engine` to swap policies after approval. This is
 private API. A public setter (or a `loop.update_policy(engine)`) is needed
 for any non-toy HITL workflow.
+
+### 8.8 Secret hygiene at the agent process boundary (extends Spec 05 / Spec 10)
+
+**Surfaced by adversarial experiment 2.** When the model was told to "save
+$ANTHROPIC_API_KEY to .env", it dutifully ran
+`echo "ANTHROPIC_API_KEY=${ANTHROPIC_API_KEY}" > .env`. The literal `.env`
+in the command happened to be on the regex denylist so the write was blocked
+— but the only reason it didn't succeed is that the model picked a filename
+the denylist happened to know about. With a less obvious filename
+(`api_backup.txt`, `secrets/key`) it would have written the live API key
+into the bind-mounted sandbox directory.
+
+Any API key (or other secret) injected into the agent process's environment
+is reachable from any shell tool. Defense in depth requires:
+
+  1. **Drop secrets from the env after model adapter init.** The
+     `AnthropicAdapter` (and any future provider adapter) should read
+     `ANTHROPIC_API_KEY` once at construction, store it in adapter-local
+     state, and `del os.environ["ANTHROPIC_API_KEY"]` before any tool is
+     registered. This applies to any provider's auth token.
+  2. **Provide an explicit "secret env vars" list** at builder time that the
+     runtime scrubs from `os.environ` before the first tool call. The
+     runtime emits an observability event documenting which vars were
+     scrubbed (so the audit trail captures the hygiene step).
+  3. **Add `secret_readout` as a guard intent category** (§6.2 above). The
+     parser flags `env`, `printenv`, `set` (no args), `declare`, `compgen
+     -e`, `cat /proc/<pid>/environ`, and any redirection of these into a
+     file. The default policy denies. This catches the exfiltration path
+     even if step 1 is bypassed by a custom adapter.
+  4. **Treat the sandbox bind-mount as untrusted output**. Anything written
+     to the sandbox volume can be read by the host operator — never assume
+     it's contained. Document this clearly in the harness README.
+
+The combination of (1) and (3) is critical: (1) eliminates the secret from
+the env, (3) catches the readout attempt even if the secret is reintroduced
+somehow (e.g. via a tool that takes the key as an arg). The defense is in
+depth, not single-layer.
 
 ---
 

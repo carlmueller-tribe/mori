@@ -38,6 +38,8 @@ op run --env-file="$REPO_ROOT/.env" -- \
     -v "$SCRATCH:/sandbox" \
     -v "$REPO_ROOT/examples/sandbox/seed:/seed:ro" \
     -e ANTHROPIC_API_KEY \
+    -e MORI_SANDBOX_MODE \
+    -e MORI_SANDBOX_MODEL \
     "$IMAGE"
 
 echo
