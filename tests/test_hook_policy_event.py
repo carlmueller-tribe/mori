@@ -8,7 +8,7 @@ from unittest.mock import AsyncMock
 
 import pytest
 
-from mori.hooks.exceptions import HookBlock
+from mori.hooks.exceptions import HookBlock, HookRetry
 from mori.hooks.registry import HookRegistry
 from mori.observability.engine import ObservabilityEngine
 from mori.observability.events import HookPolicyEvent
@@ -82,3 +82,26 @@ async def test_dispatch_before_emits_hook_policy_event_on_block() -> None:
     assert policy_events[0].event_name == "tool.invoke.before"
     assert policy_events[0].handler_name == "blocker"
     assert policy_events[0].reason == "denied for test"
+
+
+@pytest.mark.asyncio
+async def test_dispatch_before_emits_hook_policy_event_on_retry() -> None:
+    """When dispatch_before catches a HookRetry, HookPolicyEvent must be emitted."""
+    obs = AsyncMock(spec=ObservabilityEngine)
+    registry = HookRegistry(observability=obs)
+
+    @registry.hook("model.request.before", priority=10, name="retrier")
+    async def retrier(payload):
+        raise HookRetry("retry feedback for test")
+
+    with pytest.raises(HookRetry):
+        await registry.dispatch_before("model.request.before", payload={"model": "gpt-4"})
+
+    # Find the HookPolicyEvent in emitted events
+    emit_calls = [c.args[0] for c in obs.emit.call_args_list]
+    policy_events = [e for e in emit_calls if isinstance(e, HookPolicyEvent)]
+    assert len(policy_events) == 1
+    assert policy_events[0].signal == "HookRetry"
+    assert policy_events[0].event_name == "model.request.before"
+    assert policy_events[0].handler_name == "retrier"
+    assert policy_events[0].reason == "retry feedback for test"
