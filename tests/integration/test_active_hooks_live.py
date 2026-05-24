@@ -73,3 +73,40 @@ async def test_hook_block_prevents_tool_call_live(sandbox_read_file, tmp_path):
         word in final.lower()
         for word in ("blocked", "cannot", "outside", "denied", "refused")
     ), f"Model didn't acknowledge the block: {final!r}"
+
+
+async def test_ask_user_round_trip_live(tmp_path):
+    """Agent yields via ask_user, caller resumes with response, agent completes."""
+    cp_path = tmp_path / "threads.db"
+
+    agent = (
+        Mori.builder()
+        .model("anthropic", model="claude-haiku-4-5-20251001")
+        .checkpointer("sqlite", path=str(cp_path))
+        .build()
+    )
+
+    # First leg: agent should ask which database via ask_user
+    result = await agent.run(
+        "I want to back up a database. Use the ask_user tool to ask me which one "
+        "(just 'prod' or 'staging'). After I answer, say you'll back up that one and stop."
+    )
+    assert result.status == RunStatus.PAUSED, (
+        f"Expected PAUSED but got {result.status}; final_output={result.final_output!r}"
+    )
+    assert result.paused_prompt is not None and result.paused_prompt.strip() != "", (
+        "Expected a non-empty paused_prompt"
+    )
+
+    # Second leg: caller resumes with the answer
+    # Mori.resume takes dict; AgentLoop.resume extracts dict["response"] for ask_user pauses
+    result = await agent.resume(result.thread_id, {"response": "prod"})
+    assert result.status == RunStatus.COMPLETED, (
+        f"Expected COMPLETED but got {result.status}; final_output={result.final_output!r}"
+    )
+    assert result.final_output is not None
+    final = result.final_output.lower()
+    assert any(
+        word in final
+        for word in ("prod", "staging", "production", "back up", "backup", "database")
+    ), f"Final output doesn't reference the chosen DB: {result.final_output!r}"

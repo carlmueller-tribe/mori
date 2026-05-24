@@ -13,10 +13,22 @@ from __future__ import annotations
 import os
 import shutil
 import subprocess
+from pathlib import Path
 
 import pytest
 
 from mori.model.anthropic import AnthropicAdapter
+
+# Load .env from the project root so ANTHROPIC_API_KEY is available before
+# _resolve_op_reference() runs.  dotenv_values does NOT override env vars that
+# are already set, so this is safe in CI where the key may be injected directly.
+try:
+    from dotenv import load_dotenv
+
+    _project_root = Path(__file__).parent.parent.parent
+    load_dotenv(_project_root / ".env", override=False)
+except ImportError:
+    pass
 
 
 def _resolve_op_reference() -> bool:
