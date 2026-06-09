@@ -104,10 +104,29 @@ async def run(self, task, thread_id=None, context=None) -> RunResult:
         if saved:
             state = MoriState(**saved.state)
 
+    # turn.start fires before any model work. HookBlock here exits early.
+    if self.hooks:
+        payload = TurnStartPayload(
+            thread_id=state.thread_id, run_id=state.run_id, input=task,
+            is_resume=False, paused_tool_call=None, state=state,
+        )
+        try:
+            payload = await self.hooks.dispatch_before(HookEvents.TURN_START, payload)
+            task = payload.input  # honor mutations to input
+        except HookBlock as block:
+            state.status = RunStatus.BLOCKED
+            state.blocked_reason = block.reason
+            return await self._finalize_turn(state, TurnEndReason.BLOCKED)
+
     await self._emit(RunStartEvent(run_id=state.run_id, task=task))
 
     while state.status == RunStatus.RUNNING:
-        step_result = await self._execute_step(state)
+        try:
+            step_result = await self._execute_step(state)
+        except HookBlock as block:
+            state.status = RunStatus.BLOCKED
+            state.blocked_reason = block.reason
+            break
         state.step_count += 1
 
         # Auto-checkpoint
@@ -123,8 +142,40 @@ async def run(self, task, thread_id=None, context=None) -> RunResult:
         await self.checkpointer.save(state)
 
     await self._emit(RunEndEvent(run_id=state.run_id, status=state.status))
-    return RunResult.from_state(state)
+    return await self._finalize_turn(state, self._turn_end_reason_for(state))
+
+
+async def _finalize_turn(self, state: MoriState, reason: TurnEndReason) -> RunResult:
+    """Fire turn.end with the canonical reason; honor HookBlock/HookRetry."""
+    result = RunResult.from_state(state)
+    if not self.hooks:
+        return result
+
+    payload = TurnEndPayload(
+        thread_id=state.thread_id, run_id=state.run_id, reason=reason,
+        state=state, result=result,
+        paused_prompt=state.paused_prompt if reason == TurnEndReason.PAUSED_AWAIT_USER else None,
+    )
+    try:
+        payload = await self.hooks.dispatch_before(HookEvents.TURN_END, payload)
+        return payload.result
+    except HookBlock as block:
+        # Convert any non-blocked outcome into BLOCKED before returning
+        result.status = RunStatus.BLOCKED
+        result.blocked_reason = block.reason
+        return result
+    except HookRetry as retry:
+        # Only valid when reason ∈ {COMPLETED, EXHAUSTED}. Re-enter the loop
+        # with feedback appended as a system message.
+        if reason not in (TurnEndReason.COMPLETED, TurnEndReason.EXHAUSTED):
+            log.error("hook.retry_misuse", event=HookEvents.TURN_END, reason=reason)
+            return result
+        state.messages.append(Message(role="system", content=retry.feedback))
+        state.status = RunStatus.RUNNING
+        return await self._run_from_state(state)
 ```
+
+The `_finalize_turn` helper fires `turn.end` exactly once per `run()` or `resume()` call regardless of exit reason. It is the single point where `HookBlock` or `HookRetry` can change the result before it returns to the caller.
 
 ## 7. Phase Implementations
 
@@ -158,14 +209,25 @@ async def _phase_retrieve(self, state: MoriState) -> None:
 
 ### 7.2 Plan
 
-Calls the model with assembled context.
+Calls the model with assembled context. The `model.request.before` hook may transform the request, block it (`HookBlock` → exit loop with `BLOCKED`), or force a retry (`HookRetry` → append feedback and re-enter Plan).
 
 ```python
 async def _phase_plan(self, state: MoriState) -> ModelResponse:
     messages = self._assemble_messages(state)
     tools = self.tools.list_specs()
     request = ModelRequest(messages=messages, tools=tools)
+
+    if self.hooks:
+        try:
+            request = await self.hooks.dispatch_before("model.request.before", request)
+        except HookRetry as retry:
+            state.messages.append(Message(role="system", content=retry.feedback))
+            return await self._phase_plan(state)  # re-enter with feedback
+        # HookBlock propagates up to the loop, which sets status=BLOCKED
+
     response = await self.model.invoke(request)
+    if self.hooks:
+        await self.hooks.dispatch_after("model.response.after", response)
 
     state.messages.append(response.message)
     state.total_input_tokens += response.usage.input_tokens
@@ -205,23 +267,54 @@ async def _phase_validate(self, state: MoriState, tool_calls: list[ToolCall]) ->
 
 ### 7.4 Act
 
-Executes approved tool calls through the tool registry.
+Executes approved tool calls through the tool registry. Two policy paths apply here:
+
+- **`tool.invoke.before` may raise `HookBlock`.** The tool is not invoked; a synthetic result `"BLOCKED: {reason}"` is appended so the model sees its tool call was refused. The loop continues to the next tool call (other tools in the same response are not affected).
+- **The `ask_user` native tool raises `YieldToUser` internally.** Caught here, it transitions the run to `PAUSED`, saves a checkpoint, and exits `_phase_act` cleanly. The caller resumes via `agent.resume(thread_id, user_response)`.
 
 ```python
 async def _phase_act(self, state: MoriState, tool_calls: list[ToolCall]) -> list[ToolResult]:
     results = []
     for call in tool_calls:
-        call = await self.hooks.dispatch_before("tool.invoke.before", call) if self.hooks else call
-        result = await self.tools.invoke(call.name, call.arguments)
-        await self.hooks.dispatch_after("tool.invoke.after", result) if self.hooks else None
+        # tool.invoke.before may transform, block, or pass through
+        if self.hooks:
+            try:
+                call = await self.hooks.dispatch_before("tool.invoke.before", call)
+            except HookBlock as block:
+                state.messages.append(Message(
+                    role="tool",
+                    content=f"BLOCKED: {block.reason}",
+                    tool_call_id=call.id,
+                ))
+                state.total_tool_calls += 1
+                continue
+
+        try:
+            result = await self.tools.invoke(call.name, call.arguments)
+        except YieldToUser as yield_signal:
+            # ask_user invoked — pause the run, save checkpoint, exit
+            state.status = RunStatus.PAUSED
+            state.paused_reason = "await_user_input"
+            state.paused_prompt = yield_signal.question
+            state.paused_tool_call = call
+            if self.checkpointer:
+                checkpoint_id = await self.checkpointer.save(state)
+                state.last_checkpoint_id = checkpoint_id
+            return results  # remaining tool calls in this response are skipped
+
+        if self.hooks:
+            await self.hooks.dispatch_after("tool.invoke.after", result)
         state.messages.append(Message(
-            role="tool", content=result.content if isinstance(result.content, str) else str(result.content),
+            role="tool",
+            content=result.content if isinstance(result.content, str) else str(result.content),
             tool_call_id=call.id,
         ))
         state.total_tool_calls += 1
         results.append(result)
     return results
 ```
+
+**Note:** `tool.invoke.before` fires for `ask_user` like any other tool. An operator can `HookBlock` an `ask_user` call (e.g., refuse user prompts in autonomous batch contexts).
 
 ### 7.5 Observe, Evaluate, Update
 
@@ -253,6 +346,64 @@ async def _phase_update(self, state, step_outcome):
         state.status = RunStatus.FAILED
     state.last_progress_at = datetime.utcnow()
 ```
+
+### 7.6 Resume
+
+`agent.resume(thread_id, input)` is the entry point for continuing a paused run. It loads the most recent checkpoint, fires `turn.start` with `is_resume=True`, and — if the pause was due to `ask_user` — injects the caller's input as the tool result for the paused call before re-entering the loop.
+
+```python
+async def resume(self, thread_id: ThreadId, input: str | dict) -> RunResult:
+    if not self.checkpointer:
+        raise RuntimeError("resume requires a checkpointer")
+
+    cp = await self.checkpointer.load_latest(thread_id)
+    if not cp:
+        raise RuntimeError(f"no checkpoint found for thread {thread_id}")
+
+    state = MoriState(**cp.state)
+    if state.status != RunStatus.PAUSED:
+        raise RuntimeError(
+            f"resume called on non-paused thread (status={state.status}); "
+            f"check result.status before calling resume()"
+        )
+
+    input_text = input if isinstance(input, str) else input.get("text", "")
+
+    # turn.start fires with is_resume=True and the in-flight tool call
+    if self.hooks:
+        payload = TurnStartPayload(
+            thread_id=thread_id, run_id=state.run_id, input=input_text,
+            is_resume=True, paused_tool_call=state.paused_tool_call, state=state,
+        )
+        try:
+            payload = await self.hooks.dispatch_before(HookEvents.TURN_START, payload)
+            input_text = payload.input
+        except HookBlock as block:
+            state.status = RunStatus.BLOCKED
+            state.blocked_reason = block.reason
+            # NB: paused_tool_call remains; caller can resume() again with different input
+            return await self._finalize_turn(state, TurnEndReason.BLOCKED)
+
+    # If paused on ask_user, satisfy the tool call with the user's response
+    if state.paused_reason == "await_user_input" and state.paused_tool_call:
+        state.messages.append(Message(
+            role="tool",
+            content=input_text,
+            tool_call_id=state.paused_tool_call.id,
+        ))
+        state.paused_tool_call = None
+        state.paused_reason = None
+        state.paused_prompt = None
+        state.status = RunStatus.RUNNING
+
+    return await self._run_from_state(state)
+```
+
+**Edge cases:**
+
+- `resume(thread_id, ...)` on a thread whose latest checkpoint has `status != PAUSED` raises `RuntimeError` with a clear message. Callers must check `result.status == PAUSED` before calling resume.
+- If `turn.start` raises `HookBlock` on resume, the run ends `BLOCKED` and the paused `ask_user` call remains in the checkpoint — caller can resume again later with different input.
+- The `ask_user` tool (auto-registered by default) requires `checkpointer` configured. The builder enforces this at build time (`.build()` without `.checkpointer(...)` raises `BuilderError` when `ask_user` is enabled).
 
 ## 8. Streaming
 
@@ -291,6 +442,12 @@ class RunResult(MoriModel):
     total_tool_calls: int
     total_duration_ms: float
     checkpoint_id: CheckpointId | None = None
+
+    # Chat mode (set when status == PAUSED, paused_reason == "await_user_input")
+    paused_prompt: str | None = None
+
+    # Active Hooks (set when status == BLOCKED via HookBlock)
+    blocked_reason: str | None = None
 
 class StepResult(MoriModel):
     step_id: StepId
@@ -495,6 +652,21 @@ class OpenAIAdapter(ModelAdapter):
 - [ ] pause() saves a checkpoint; resume() continues from it
 - [ ] ESCALATE pauses the run and produces a checkpoint
 - [ ] Denied tool calls inject denial messages into conversation
+- [ ] `turn.start` fires at `run()` entry with `is_resume=False`
+- [ ] `turn.start` fires at `resume()` entry with `is_resume=True` and `paused_tool_call` populated
+- [ ] `turn.end` fires exactly once per `run()` or `resume()` call with correct `reason`
+- [ ] `HookBlock` at `turn.start` exits the run with `RunResult.status=BLOCKED`
+- [ ] `HookBlock` at `model.request.before` exits the loop with `RunStatus.BLOCKED`; model not invoked
+- [ ] `HookBlock` at `tool.invoke.before` appends `"BLOCKED: ..."` tool result; loop continues to next call
+- [ ] `HookBlock` at `turn.end` overwrites `result.status` to `BLOCKED` before returning
+- [ ] `HookRetry` at `model.request.before` appends feedback as system message and re-enters Plan
+- [ ] `HookRetry` at `turn.end` with `reason ∈ {COMPLETED, EXHAUSTED}` re-enters the loop with feedback
+- [ ] `HookRetry` on unsupported events is logged at error and treated as `None`
+- [ ] `ask_user` tool yields the agent: `RunStatus=PAUSED`, `paused_prompt` set, checkpoint saved
+- [ ] `resume(thread_id, user_response)` injects the response as the paused tool result and continues
+- [ ] `resume()` on a non-paused thread raises `RuntimeError` with a clear message
+- [ ] `.build()` without `.checkpointer()` raises `BuilderError` when `ask_user` is enabled (the default)
+- [ ] `tool.invoke.before` fires for `ask_user` like any other tool (operator can block it)
 - [ ] All modules are optional: model + tools alone produces a working ReAct loop
 - [ ] stream() yields events at every phase boundary
 - [ ] Hooks fire at the correct points with correct payloads

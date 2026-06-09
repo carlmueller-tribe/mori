@@ -122,6 +122,7 @@ async def test_builder_with_runtime_adapter_delegates():
     builder = MoriBuilder()
     builder._model_adapter = MagicMock()
     builder._runtime_adapter = EchoAdapter()
+    builder._disabled_native_tools = {"ask_user"}
     agent = builder.build()
     result = await agent.run("hello from adapter")
     assert result.final_output == "echo: hello from adapter"

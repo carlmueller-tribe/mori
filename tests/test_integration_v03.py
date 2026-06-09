@@ -47,6 +47,7 @@ async def test_v03_exit_test():
             .tool(lookup, description="Look up a topic")
             .memory_backend("inmemory")
             .config(max_steps=10)
+            .checkpointer("inmemory")
             .build()
         )
         result = await agent.run("Look up auth and database, summarize both", thread_id="test")
@@ -64,7 +65,12 @@ async def test_v03_no_memory_backward_compat():
         mock = AsyncMock()
         mock.invoke = AsyncMock(return_value=_text_response("done"))
         M.return_value = mock
-        agent = Mori.builder().model("anthropic", api_key="test").build()
+        agent = (
+            Mori.builder()
+            .model("anthropic", api_key="test")
+            .checkpointer("inmemory")
+            .build()
+        )
         result = await agent.run("test")
         assert result.status == RunStatus.COMPLETED
         assert agent.memory is None

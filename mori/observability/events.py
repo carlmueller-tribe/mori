@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from datetime import datetime
-from typing import Any, Protocol, runtime_checkable
+from typing import Any, Literal, Protocol, runtime_checkable
 
 from pydantic import Field
 
@@ -168,6 +168,26 @@ class PermissionCheckEvent(MoriEvent):
     decision: str  # "allow", "deny", or "escalate"
     rule_id: str | None = None
     explanation: str = ""
+
+
+# ── Hook Events ──────────────────────────────────────────────
+
+
+class HookPolicyEvent(MoriEvent):
+    """Policy signal raised by a hook (HookBlock or HookRetry).
+
+    Emitted to the observability stream whenever a registered hook raises
+    HookBlock or HookRetry inside dispatch_before. Sinks must surface these
+    prominently — policy decisions changing run outcomes should not require
+    digging through DEBUG logs.
+    """
+
+    event_type: str = "hook.policy"
+    signal: Literal["HookBlock", "HookRetry"]
+    event_name: str            # which hook event the signal was raised at
+    hook_id: str               # which hook raised
+    handler_name: str
+    reason: str                # the message argument to the exception
 
 
 # ── Trace Context ────────────────────────────────────────────

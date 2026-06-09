@@ -18,11 +18,24 @@ log = structlog.get_logger()
 
 
 class HookRegistry:
-    def __init__(self, config: HookConfig | None = None) -> None:
+    def __init__(
+        self,
+        config: HookConfig | None = None,
+        observability: Any | None = None,  # ObservabilityEngine, avoid circular import
+    ) -> None:
         self._config = config or HookConfig()
+        self._observability = observability
         # event_name -> [(priority, hook_id, handler)]
         self._hooks: dict[str, list[tuple[int, str, HookHandler]]] = {}
         self._registrations: dict[str, HookRegistration] = {}
+        self._current_run_id: str | None = None
+
+    def set_current_run_id(self, run_id: str | None) -> None:
+        """Set the run_id to be stamped on emitted HookPolicyEvents.
+
+        Called by the runtime at the start of each run; cleared at end.
+        """
+        self._current_run_id = run_id
 
     def register(
         self,
@@ -59,9 +72,14 @@ class HookRegistry:
         ]  # noqa: E501
         return True
 
-    def hook(self, event_name: str, priority: int = 100) -> Callable[[HookHandler], HookHandler]:
+    def hook(
+        self,
+        event_name: str,
+        priority: int = 100,
+        name: str | None = None,
+    ) -> Callable[[HookHandler], HookHandler]:
         def decorator(fn: HookHandler) -> HookHandler:
-            self.register(event_name, fn, priority=priority, name=fn.__name__)
+            self.register(event_name, fn, priority=priority, name=name or fn.__name__)
             return fn
 
         return decorator
@@ -95,13 +113,30 @@ class HookRegistry:
         for _priority, hook_id, handler in self._hooks.get(event_name, []):
             try:
                 result = await self._call(handler, current)
-            except HookBlock as e:
-                if e.hook_id is None:
-                    e.hook_id = hook_id
-                raise
-            except HookRetry as e:
-                if e.hook_id is None:
-                    e.hook_id = hook_id
+            except (HookBlock, HookRetry) as policy_signal:
+                if policy_signal.hook_id is None:
+                    policy_signal.hook_id = hook_id
+
+                if self._observability is not None:
+                    from mori.observability.events import HookPolicyEvent
+
+                    registered_name = (
+                        self._registrations[hook_id].handler_name
+                        if hook_id in self._registrations
+                        else getattr(handler, "__name__", "<unknown>")
+                    )
+                    event = HookPolicyEvent(
+                        event_id=f"evt_{secrets.token_hex(6)}",
+                        timestamp=datetime.now(UTC),
+                        run_id=self._current_run_id or getattr(policy_signal, "run_id", None) or "unknown",
+                        signal=type(policy_signal).__name__,
+                        event_name=event_name,
+                        hook_id=hook_id,
+                        handler_name=registered_name,
+                        reason=str(policy_signal),
+                    )
+                    await self._observability.emit(event)
+
                 raise
             if result is not None:
                 # Audit: a hook returned a non-None payload, meaning it

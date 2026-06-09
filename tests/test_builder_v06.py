@@ -76,6 +76,7 @@ def test_builder_passes_runtime_to_loop():
     adapter = FakeAdapter()
     builder = _builder()
     builder._runtime_adapter = adapter
+    builder._disabled_native_tools = {"ask_user"}
     mori = builder.build()
     assert mori._loop._runtime is adapter
 
@@ -95,6 +96,7 @@ def test_builder_embedder_wired_to_loop():
     builder = _builder()
     builder._embedder = embedder
     builder._memory_config = {"type": "inmemory"}
+    builder._disabled_native_tools = {"ask_user"}
     mori = builder.build()
     assert mori._memory._embedder is embedder
 

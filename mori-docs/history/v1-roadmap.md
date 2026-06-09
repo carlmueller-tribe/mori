@@ -15,6 +15,16 @@ and integration documentation.
 | 13 | Pi Patterns | Tree sessions, context compaction patterns, AGENTS.md loader, steering, skills compat |
 | 14 | Resilience & Temporal | Temporal-backed `CheckpointStore`, phase Activities, Signal-based PAUSE/RESUME, hook Activities |
 
+## Post-V1 — Future Modules
+
+The following specs describe future modules that **do not block V1**. They
+extend Mori into adjacent domains once the compliance-focused core is shipped
+and stable.
+
+| Spec | Title | What it adds |
+|------|-------|-------------|
+| 15 | Coding Harness (`mori.code`) | Optional module of code-aware tools (filesystem / search / shell / git), sandbox primitives, code-specific guards and policies, and a `CodingAgentBuilder` preset. Surfaces cross-cutting prerequisites (permission-engine condition evaluation, prompt caching, runtime streaming, cleaner HITL resume, cancel) that are general improvements forced by a concrete coding consumer. Motivated by the `examples/coding_sandbox.py` experiment. |
+
 ## Complete V1 Module Set
 
 ```mermaid

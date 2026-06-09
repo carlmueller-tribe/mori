@@ -202,6 +202,14 @@ class MoriBuilder:
         if self._model_adapter is None:
             raise ValueError("A model must be configured. Call .model() before .build()")
 
+        # Spec-required guard: ask_user requires a checkpointer to pause/resume.
+        ask_user_enabled = "ask_user" not in self._disabled_native_tools
+        if ask_user_enabled and self._checkpointer_config is None:
+            raise ValueError(
+                "ask_user requires a checkpointer; call .checkpointer() before .build(), "
+                "or .disable_native_tool('ask_user') to opt out."
+            )
+
         # 1. Observability
         obs: ObservabilityEngine | None = None
         if self._sinks:
@@ -316,14 +324,12 @@ class MoriBuilder:
             else:
                 raise ValueError(f"Unknown checkpointer type: {ctype}")
 
-        # 9. Hooks
-        hook_registry = None
-        if self._hook_handlers:
-            from mori.hooks.registry import HookRegistry
+        # 9. Hooks — always create registry so agent.hooks is usable post-build
+        from mori.hooks.registry import HookRegistry
 
-            hook_registry = HookRegistry()
-            for event_name, handler, priority in self._hook_handlers:
-                hook_registry.register(event_name, handler, priority=priority)
+        hook_registry = HookRegistry(observability=obs)
+        for event_name, handler, priority in self._hook_handlers:
+            hook_registry.register(event_name, handler, priority=priority)
 
         # 10. Agent loop
         loop = AgentLoop(

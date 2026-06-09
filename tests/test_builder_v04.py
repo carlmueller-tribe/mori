@@ -40,7 +40,11 @@ def test_builder_skill_registry(tmp_path):
     with patch("mori.agent.AnthropicAdapter") as M:
         M.return_value = AsyncMock()
         agent = (
-            Mori.builder().model("anthropic", api_key="test").skill_registry(str(tmp_path)).build()
+            Mori.builder()
+            .model("anthropic", api_key="test")
+            .skill_registry(str(tmp_path))
+            .disable_native_tool("ask_user")
+            .build()
         )
         assert agent.skills is not None
 
@@ -52,6 +56,7 @@ def test_builder_budget():
             Mori.builder()
             .model("anthropic", api_key="test")
             .budget(total_context_tokens=100_000)
+            .disable_native_tool("ask_user")
             .build()
         )
         assert agent.budget is not None
@@ -60,14 +65,24 @@ def test_builder_budget():
 def test_builder_no_skill_registry():
     with patch("mori.agent.AnthropicAdapter") as M:
         M.return_value = AsyncMock()
-        agent = Mori.builder().model("anthropic", api_key="test").build()
+        agent = (
+            Mori.builder()
+            .model("anthropic", api_key="test")
+            .disable_native_tool("ask_user")
+            .build()
+        )
         assert agent.skills is None
 
 
 def test_builder_no_budget():
     with patch("mori.agent.AnthropicAdapter") as M:
         M.return_value = AsyncMock()
-        agent = Mori.builder().model("anthropic", api_key="test").build()
+        agent = (
+            Mori.builder()
+            .model("anthropic", api_key="test")
+            .disable_native_tool("ask_user")
+            .build()
+        )
         assert agent.budget is None
 
 
@@ -101,6 +116,7 @@ def test_builder_order_independent(tmp_path):
             .model("anthropic", api_key="x")
             .skill_registry(str(tmp_path))
             .budget(total_context_tokens=50_000)
+            .disable_native_tool("ask_user")
             .build()
         )
         # budget before skill_registry
@@ -109,6 +125,7 @@ def test_builder_order_independent(tmp_path):
             .model("anthropic", api_key="x")
             .budget(total_context_tokens=50_000)
             .skill_registry(str(tmp_path))
+            .disable_native_tool("ask_user")
             .build()
         )
         assert a1.skills is not None and a1.budget is not None
@@ -147,6 +164,7 @@ async def test_agent_run_with_skills_and_budget(tmp_path):
             .model("anthropic", api_key="test")
             .skill_registry(str(tmp_path))
             .budget(total_context_tokens=100_000)
+            .checkpointer("inmemory")
             .build()
         )
         result = await agent.run("fix the failing test")

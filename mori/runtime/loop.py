@@ -452,6 +452,8 @@ class AgentLoop:
         self, task: str, thread_id: ThreadId | None = None, context: dict[str, Any] | None = None
     ) -> RunResult:  # noqa: E501
         state = self._init_state(task, thread_id, context)
+        if self._hooks is not None:
+            self._hooks.set_current_run_id(state.run_id)
         if self._runtime is not None:
             from mori.observability.events import RunEndEvent, RunStartEvent
 
@@ -478,13 +480,25 @@ class AgentLoop:
                     duration_ms=(time.monotonic() - start_time) * 1000,
                 )
             )
+            if self._hooks is not None:
+                self._hooks.set_current_run_id(None)
             return result
         if self._hooks:
             try:
-                await self._hooks.dispatch_before(
+                payload = await self._hooks.dispatch_before(
                     HookEvents.TURN_START,
                     TurnStartPayload(input=task, thread_id=state.thread_id, is_resume=False),
                 )
+                if payload is not None and payload.input != task:
+                    task = payload.input
+                    state.task = task
+                    # The initial user message was set in _init_state with the
+                    # pre-mutation task; update it so the model sees the
+                    # mutated input.
+                    if state.messages and state.messages[0].role == "user":
+                        state.messages[0] = state.messages[0].model_copy(
+                            update={"content": task}
+                        )
             except HookBlock as block:
                 state.status = RunStatus.BLOCKED
                 await self._fire_turn_end(state)
@@ -495,6 +509,7 @@ class AgentLoop:
                         "block_hook_id": block.hook_id,
                     }
                 )
+                self._hooks.set_current_run_id(None)
                 return result
         return await self._run_from_state(state)
 
@@ -505,6 +520,8 @@ class AgentLoop:
         if cp is None:
             raise ValueError(f"No checkpoint found for thread {thread_id}")
         state = cp.restore()
+        if self._hooks is not None:
+            self._hooks.set_current_run_id(state.run_id)
         if state.status != RunStatus.PAUSED:
             raise ValueError(
                 f"Cannot resume thread {thread_id}: checkpoint has status '{state.status.value}', expected 'paused'"  # noqa: E501
@@ -534,10 +551,17 @@ class AgentLoop:
 
         if self._hooks:
             try:
-                await self._hooks.dispatch_before(
+                payload = await self._hooks.dispatch_before(
                     HookEvents.TURN_START,
                     TurnStartPayload(input=user_text, thread_id=thread_id, is_resume=True),
                 )
+                if payload is not None and payload.input != user_text:
+                    # Mutation: append a system message with the injected content
+                    # so the model sees the change without rewriting the paused
+                    # tool-result message that resume just appended.
+                    state.messages.append(
+                        Message(role="system", content=payload.input)
+                    )
             except HookBlock as block:
                 state.status = RunStatus.BLOCKED
                 await self._fire_turn_end(state)
@@ -548,6 +572,7 @@ class AgentLoop:
                         "block_hook_id": block.hook_id,
                     }
                 )
+                self._hooks.set_current_run_id(None)
                 return result
         return await self._run_from_state(state)
 
@@ -779,6 +804,8 @@ class AgentLoop:
         # If a cancellation slipped through the inner loop, the closing
         # boundary events have now fired — re-raise so the caller sees
         # the cancellation as cancellation, not as a FAILED RunResult.
+        if self._hooks is not None:
+            self._hooks.set_current_run_id(None)
         if state.context.pop("_reraise_cancelled", False):
             raise asyncio.CancelledError()
         return run_result

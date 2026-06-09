@@ -40,6 +40,7 @@ def test_builder_returns_mori_instance():
         agent = (
             Mori.builder()
             .model("anthropic", model="claude-sonnet-4-20250514", api_key="test")
+            .checkpointer("inmemory")
             .build()
         )
         assert isinstance(agent, Mori)
@@ -78,6 +79,7 @@ def test_builder_registers_tool_with_name():
             Mori.builder()
             .model("anthropic", api_key="test")
             .tool(my_func, description="Test", name="custom_name")
+            .disable_native_tool("ask_user")
             .build()
         )
         specs = agent.tools.list_specs()
@@ -87,7 +89,13 @@ def test_builder_registers_tool_with_name():
 def test_builder_config():
     with patch("mori.agent.AnthropicAdapter") as MockAdapter:
         MockAdapter.return_value = AsyncMock()
-        agent = Mori.builder().model("anthropic", api_key="test").config(max_steps=10).build()
+        agent = (
+            Mori.builder()
+            .model("anthropic", api_key="test")
+            .disable_native_tool("ask_user")
+            .config(max_steps=10)
+            .build()
+        )
         assert agent._loop._control._config.max_steps == 10
 
 
@@ -110,6 +118,7 @@ async def test_mori_run():
             Mori.builder()
             .model("anthropic", api_key="test")
             .tool(add, description="Add two numbers")
+            .checkpointer("inmemory")
             .build()
         )
         result = await agent.run("What is 3 + 5?")
